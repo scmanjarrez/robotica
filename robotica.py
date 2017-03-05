@@ -2,13 +2,11 @@
 import numpy as np
 import re
 import sys
-from os import listdir
+from os import listdir, mkdir
 from os.path import isfile, join
 from scipy.misc import imread, imsave
 from sklearn.neighbors.nearest_centroid import NearestCentroid
-
 import cv2
-import seg
 import select_pixels as sel
 
 
@@ -61,8 +59,8 @@ def marking(video):
 
 def training():
     # Height x Width x channel
-    origImg = imread('OriginalImg1512.png')
-    markImg = imread('TrainingImg1512.png')
+    origImg = imread('linea.png')
+    markImg = imread('lineaMarcada.png')
 
     # Normalization: all = R+G+B, R = R/all, G = G/all, B = B/all
     # [[[1,2,3],	         [[[1,4],                                   [[[0.1666,0.2666],                      [[[0.1666,0.3333,0.5000],
@@ -87,27 +85,15 @@ def training():
     # np.where(np.all...) --> X*Y
     # Matrix of indices with red marked pixels
 
-    # data_red = origImg[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
-    # data_green = origImg[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
-    # data_blue = origImg[np.where(np.all(np.equal(markImg, (0, 0, 255)), 2))]
-
     data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
     data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
     data_blueN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 0, 255)), 2))]
 
-    # data = np.concatenate([data_red, data_green, data_blue])
     dataN = np.concatenate([data_redN, data_greenN, data_blueN])
-
-    # target = np.concatenate([np.zeros(len(data_red[:]), dtype=int),
-    #                          np.ones(len(data_green[:]), dtype=int),
-    #                          np.full(len(data_blue[:]), 2, dtype=int)])
 
     targetN = np.concatenate([np.zeros(len(data_redN[:]), dtype=int),
                               np.ones(len(data_greenN[:]), dtype=int),
                               np.full(len(data_blueN[:]), 2, dtype=int)])
-
-    # clf = NearestCentroid()
-    # clf.fit(data, target)
 
     clfN = NearestCentroid()
     clfN.fit(dataN, targetN)
@@ -119,33 +105,36 @@ def segmentation(clfN, video):
     capture = cv2.VideoCapture(video)
     count = 0
 
+    dirname = "SegmFrames"
+    try:
+        mkdir(dirname)
+    except OSError:
+        # print "Directory already created."
+        pass
+
     while(capture.isOpened()):
         ret, frame = capture.read()
         if ret and not count % 24:
             cv2.imshow('Original', frame)
             shape = frame.shape
+
             ImgNorm = np.rollaxis((np.rollaxis(frame, 2)+0.0)/np.sum(frame, 2), 0, 3)
 
             # Reshape in order to reduce the 3-dimensional array to 2-dimensional (needed for predict)
-            # labels = clf.predict(frame.reshape(shape[0]*shape[1], 3))
             labelsN = clfN.predict(ImgNorm.reshape(shape[0]*shape[1], 3))
 
-            # labels = clf.segmenta(frame)
             paleta = np.array([[0, 0, 255], [0, 0, 0], [255, 0, 0]], dtype=np.uint8)
 
             # Reshape back, from 2-dimensional to 3-dimensional
-            # aux = paleta[labels]
             auxN = paleta[labelsN]
-            # segm = aux.reshape(shape[0], shape[1], 3)
             segmN = auxN.reshape(shape[0], shape[1], 3)
 
-            # segmImg = cv2.cvtColor(segm, cv2.COLOR_RGB2BGR)
-            # cv2.imshow("Segmentation", segmImg)
-
             segmImgN = cv2.cvtColor(segmN, cv2.COLOR_RGB2BGR)
+
             cv2.imshow("SegmNormalized", segmImgN)
 
-            # cv2.imwrite('SegmImg'+str(count)+'.png', segmImgN)
+            cv2.imwrite(join(dirname, 'SegmImg'+str(count)+'.png'), segmImgN)
+
             # compare key pressed with the ascii code of the character
             key = cv2.waitKey(100)
 
@@ -164,17 +153,17 @@ def segmentation(clfN, video):
 
 
 def genVideo():
-    direct = "segmentation"
-    images = [f for f in listdir(direct) if isfile(join(direct, f))]
+    dirname = "SegmFrames"
+    images = [f for f in listdir(dirname) if isfile(join(dirname, f))]
     images = natural_sort(images)
-    img1 = cv2.imread(direct+"/"+images[0])
+    img1 = cv2.imread(join(dirname, images[0]))
 
     height, width, layers = img1.shape
 
-    video = cv2.VideoWriter('segmentation.avi', cv2.cv.CV_FOURCC('M', 'P', '4', '2'), 5.0, (width, height))
+    video = cv2.VideoWriter('segmentation.avi', cv2.cv.CV_FOURCC('M', 'P', '4', '2'), 1.0, (width, height))
 
     for img in images:
-        video.write(cv2.imread(direct+"/"+img))
+        video.write(cv2.imread(join(dirname, img)))
 
     cv2.destroyAllWindows()
     video.release()
