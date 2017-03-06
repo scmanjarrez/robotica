@@ -15,17 +15,14 @@ video = 'video2017-3.avi'
 trainImg = '1536'
 trainDir = 'TrainFrames'
 segmDir = 'SegmFrames'
+normDir = 'NormFrames'
 
 
 def marking():
     capture = cv2.VideoCapture(video)
     count = 0
 
-    try:
-        mkdir(trainDir)
-    except OSError:
-        # print "Directory already created."
-        pass
+    check_dir(trainDir)
 
     while(capture.isOpened()):
         ret, frame = capture.read()
@@ -70,46 +67,52 @@ def marking():
     cv2.destroyAllWindows()
 
 
-def training():
-    # Height x Width x channel
-    origImg = imread(join(trainDir, 'OriginalImg'+trainImg+'.png'))
-    markImg = imread(join(trainDir, 'TrainingImg'+trainImg+'.png'))
+def training(args):
+    check_dir(trainDir)
+    check_dir(normDir)
 
-    # Normalization: all = R+G+B, R = R/all, G = G/all, B = B/all
-    # [[[1,2,3],	         [[[1,4],                                   [[[0.1666,0.2666],                      [[[0.1666,0.3333,0.5000],
-    #   [4,5,6]],       	   [6,8],                                     [0.4000,0.3809],                        [0.2666,0.3333,0.4000]],
-    #                              [5,8]],                                    [0.2777,0.4705]],
-    #
-    #
-    #  [[6,5,4],   rollaxis(x,2)  [[2,5],    np.sum(x,2)  [[ 6,15],    R/S   [[0.3333,0.3333],     rollaxis(D,0,3)   [[0.4000,0.3333,0.2666],
-    #   [8,7,6]],  ------------>   [5,7],    ---------->   [15,21],   ---->   [0.3333,0.3333],     -------------->    [0.3809,0.3333,0.2857]],
-    #                    R         [6,9]],        S        [18,17]]     D     [0.3333,0.5294]],
-    #
-    #  [[5,6,7],                  [[3,6],                                    [[0.5000,0.4000],                       [[0.2777,0.3333,0.3888],
-    #   [8,9,0]]]          	   [4,6],                                     [0.2666,0.2857],                        [0.4705,0.5294,0.0000]]]
-    #                       	   [7,0]]]                                    [0.3888,0.0000]]]
-    ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
+    if not args.multiTrain:
+        # Height x Width x channel
+        origImg = imread(join(trainDir, 'OriginalImg'+trainImg+'.png'))
+        markImg = imread(join(trainDir, 'TrainingImg'+trainImg+'.png'))
 
-    # Get marked points from original image
-    # np.equal(markImg, (255, 0, 0) --> X*Y*3
-    # Matrix of X rows, each row have Y rows with 3 columns of booleans
-    # np.all(np.equal..., 2) --> X*Y
-    # Matrix of X rows with Y columns, True if pixel has red mark
-    # np.where(np.all...) --> X*Y
-    # Matrix of indices with red marked pixels
+        # Normalization: all = R+G+B, R = R/all, G = G/all, B = B/all
+        # [[[1,2,3],	         [[[1,4],                                   [[[0.1666,0.2666],                      [[[0.1666,0.3333,0.5000],
+        #   [4,5,6]],       	   [6,8],                                     [0.4000,0.3809],                        [0.2666,0.3333,0.4000]],
+        #                              [5,8]],                                    [0.2777,0.4705]],
+        #
+        #
+        #  [[6,5,4],   rollaxis(x,2)  [[2,5],    np.sum(x,2)  [[ 6,15],    R/S   [[0.3333,0.3333],     rollaxis(D,0,3)   [[0.4000,0.3333,0.2666],
+        #   [8,7,6]],  ------------>   [5,7],    ---------->   [15,21],   ---->   [0.3333,0.3333],     -------------->    [0.3809,0.3333,0.2857]],
+        #                    R         [6,9]],        S        [18,17]]     D     [0.3333,0.5294]],
+        #
+        #  [[5,6,7],                  [[3,6],                                    [[0.5000,0.4000],                       [[0.2777,0.3333,0.3888],
+        #   [8,9,0]]]          	   [4,6],                                     [0.2666,0.2857],                        [0.4705,0.5294,0.0000]]]
+        #                       	   [7,0]]]                                    [0.3888,0.0000]]]
+        ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
 
-    data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
-    data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
-    data_blueN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 0, 255)), 2))]
+        imsave(join(normDir, 'Norm'+trainImg+'.png'), ImgNorm*255)
 
-    dataN = np.concatenate([data_redN, data_greenN, data_blueN])
+        # Get marked points from original image
+        # np.equal(markImg, (255, 0, 0) --> X*Y*3
+        # Matrix of X rows, each row have Y rows with 3 columns of booleans
+        # np.all(np.equal..., 2) --> X*Y
+        # Matrix of X rows with Y columns, True if pixel has red mark
+        # np.where(np.all...) --> X*Y
+        # Matrix of indices with red marked pixels
 
-    targetN = np.concatenate([np.zeros(len(data_redN[:]), dtype=int),
-                              np.ones(len(data_greenN[:]), dtype=int),
-                              np.full(len(data_blueN[:]), 2, dtype=int)])
+        data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
+        data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
+        data_blueN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 0, 255)), 2))]
 
-    # Train the system with +20 images
-    # dataN, targetN = training_multiple_images()
+        dataN = np.concatenate([data_redN, data_greenN, data_blueN])
+
+        targetN = np.concatenate([np.zeros(len(data_redN[:]), dtype=int),
+                                  np.ones(len(data_greenN[:]), dtype=int),
+                                  np.full(len(data_blueN[:]), 2, dtype=int)])
+    else:
+        # Train the system with +20 images
+        dataN, targetN = training_multiple_images()
 
     clfN = NearestCentroid()
     clfN.fit(dataN, targetN)
@@ -122,11 +125,7 @@ def segmentation(clfN, args):
     count = 0
 
     if args.genVideo:
-        try:
-            mkdir(segmDir)
-        except OSError:
-            # print "Directory already created."
-            pass
+        check_dir(segmDir)
 
     while(capture.isOpened()):
         ret, frame = capture.read()
@@ -209,6 +208,8 @@ def training_multiple_images():
     markImg = imread(join(trainDir, 'TrainingImg'+train[0]+'.png'))
     ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
 
+    imsave(join(normDir, 'Norm'+train[0]+'.png'), ImgNorm*255)
+
     data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
     data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
     data_blueN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 0, 255)), 2))]
@@ -222,7 +223,10 @@ def training_multiple_images():
     for elem in train[1:]:
         origImg = imread(join(trainDir, 'OriginalImg'+elem+'.png'))
         markImg = imread(join(trainDir, 'TrainingImg'+elem+'.png'))
+
         ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
+
+        imsave(join(normDir, 'Norm'+elem+'.png'), ImgNorm*255)
 
         data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
         data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
@@ -237,6 +241,15 @@ def training_multiple_images():
 
     return dataN, targetN
 
+
+def check_dir(dirName):
+    try:
+        mkdir(dirName)
+    except OSError:
+        # print "Directory already created."
+        pass
+
+
 def main(parser, args):
     global video, trainImg
 
@@ -246,13 +259,12 @@ def main(parser, args):
     if args.trainImg:
         trainImg = args.trainImg
 
-    # We want to mark lots of images,
-    # then choose the ones in the training process
+    # Mark lots of images
     if args.mark:
         marking()
-
+    # Select the ones you want to train
     elif args.seg:
-        clfN = training()
+        clfN = training(args)
         segmentation(clfN, args)
 
     if args.genVideo:
@@ -266,6 +278,10 @@ if __name__ == "__main__":
 
     parser.add_argument('-ti', '--trainImg',
                         help='Select a different trainingImg.')
+
+    parser.add_argument('-mt', '--multiTrain',
+                        action='store_true',
+                        help='Train the system with multiple images.')
 
     group = parser.add_argument_group('Commands')
 
