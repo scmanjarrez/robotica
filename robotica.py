@@ -9,10 +9,13 @@ from sklearn.neighbors.nearest_centroid import NearestCentroid
 import cv2
 import select_pixels as sel
 import argparse
+# from matplotlib import pyplot as plt
+# from mpl_toolkits.mplot3d import Axes3D
+# from mpl_toolkits.mplot3d import proj3d
 
 
 video = 'video2017-3.avi'
-trainImg = '1536'
+trainImg = '1512'
 trainDir = 'TrainFrames'
 segmDir = 'SegmFrames'
 normDir = 'NormFrames'
@@ -73,8 +76,14 @@ def training(args):
 
     if not args.multiTrain:
         # Height x Width x channel
-        origImg = imread(join(trainDir, 'OriginalImg'+trainImg+'.png'))
-        markImg = imread(join(trainDir, 'TrainingImg'+trainImg+'.png'))
+        if not args.gimpImg:
+            origImg = imread(join(trainDir, 'OriginalImg'+trainImg+'.png'))
+            markImg = imread(join(trainDir, 'TrainingImg'+trainImg+'.png'))
+            # origImg = imread(join(trainDir, 'frame.png'))
+            # markImg = imread(join(trainDir, 'frame_painted.png'))
+        else:
+            origImg = imread(join(trainDir, 'Gimp'+trainImg+'.png'))
+            markImg = imread(join(trainDir, 'GimpTrain'+trainImg+'.png'))
 
         # Normalization: all = R+G+B, R = R/all, G = G/all, B = B/all
         # [[[1,2,3],	         [[[1,4],                                   [[[0.1666,0.2666],                      [[[0.1666,0.3333,0.5000],
@@ -110,6 +119,22 @@ def training(args):
         targetN = np.concatenate([np.zeros(len(data_redN[:]), dtype=int),
                                   np.ones(len(data_greenN[:]), dtype=int),
                                   np.full(len(data_blueN[:]), 2, dtype=int)])
+
+        # fig = plt.figure(figsize=(8, 8))
+        # ax = fig.add_subplot(111, projection='3d')
+        # plt.rcParams['legend.fontsize'] = 10
+
+        # data = [data_redN, data_greenN, data_blueN]
+        # colors_markers = ('red', 'green', 'blue')
+        # for pos in range(3):
+        #     ax.plot(data[pos][:, 0], data[pos][:, 1], data[pos][:, 2], '*',
+        #             markersize=5, color=colors_markers[pos], alpha=0.5, label=colors_markers[pos])
+
+        # plt.legend(loc='upper left')
+        # ax.set_xlim(0, 1)
+        # ax.set_ylim(0, 1)
+        # ax.set_zlim(0, 1)
+        # plt.show()
     else:
         # Train the system with +20 images
         dataN, targetN = training_multiple_images()
@@ -282,6 +307,10 @@ if __name__ == "__main__":
     parser.add_argument('-mt', '--multiTrain',
                         action='store_true',
                         help='Train the system with multiple images.')
+
+    parser.add_argument('-g', '--gimpImg',
+                        action='store_true',
+                        help='Train the system with a fully colored image.')
 
     group = parser.add_argument_group('Commands')
 
