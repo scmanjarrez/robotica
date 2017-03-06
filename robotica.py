@@ -8,11 +8,24 @@ from scipy.misc import imread, imsave
 from sklearn.neighbors.nearest_centroid import NearestCentroid
 import cv2
 import select_pixels as sel
+import argparse
 
 
-def marking(video):
+video = 'video2017-3.avi'
+trainImg = '1536'
+trainDir = 'TrainFrames'
+segmDir = 'SegmFrames'
+
+
+def marking():
     capture = cv2.VideoCapture(video)
     count = 0
+
+    try:
+        mkdir(trainDir)
+    except OSError:
+        # print "Directory already created."
+        pass
 
     while(capture.isOpened()):
         ret, frame = capture.read()
@@ -40,8 +53,8 @@ def marking(video):
                 # mark training pixels
                 markImg = sel.select_fg_bg(imRGB)
 
-                imsave('OriginalImg'+str(count)+'.png', imRGB)
-                imsave('TrainingImg'+str(count)+'.png', markImg)
+                imsave(join(trainDir, 'OriginalImg'+str(count)+'.png'), imRGB)
+                imsave(join(trainDir, 'TrainingImg'+str(count)+'.png'), markImg)
 
             # (q)uit program
             if key & 0xFF == ord('q'):
@@ -59,8 +72,8 @@ def marking(video):
 
 def training():
     # Height x Width x channel
-    origImg = imread('linea.png')
-    markImg = imread('lineaMarcada.png')
+    origImg = imread(join(trainDir, 'OriginalImg'+trainImg+'.png'))
+    markImg = imread(join(trainDir, 'TrainingImg'+trainImg+'.png'))
 
     # Normalization: all = R+G+B, R = R/all, G = G/all, B = B/all
     # [[[1,2,3],	         [[[1,4],                                   [[[0.1666,0.2666],                      [[[0.1666,0.3333,0.5000],
@@ -95,22 +108,25 @@ def training():
                               np.ones(len(data_greenN[:]), dtype=int),
                               np.full(len(data_blueN[:]), 2, dtype=int)])
 
+    # Train the system with +20 images
+    # dataN, targetN = training_multiple_images()
+
     clfN = NearestCentroid()
     clfN.fit(dataN, targetN)
 
     return clfN
 
 
-def segmentation(clfN, video):
+def segmentation(clfN, args):
     capture = cv2.VideoCapture(video)
     count = 0
 
-    dirname = "SegmFrames"
-    try:
-        mkdir(dirname)
-    except OSError:
-        # print "Directory already created."
-        pass
+    if args.genVideo:
+        try:
+            mkdir(segmDir)
+        except OSError:
+            # print "Directory already created."
+            pass
 
     while(capture.isOpened()):
         ret, frame = capture.read()
@@ -133,7 +149,8 @@ def segmentation(clfN, video):
 
             cv2.imshow("SegmNormalized", segmImgN)
 
-            cv2.imwrite(join(dirname, 'SegmImg'+str(count)+'.png'), segmImgN)
+            if args.genVideo:
+                cv2.imwrite(join(segmDir, 'SegmImg'+str(count)+'.png'), segmImgN)
 
             # compare key pressed with the ascii code of the character
             key = cv2.waitKey(100)
@@ -152,38 +169,118 @@ def segmentation(clfN, video):
     cv2.destroyAllWindows()
 
 
-def genVideo():
-    dirname = "SegmFrames"
-    images = [f for f in listdir(dirname) if isfile(join(dirname, f))]
+def gen_video(name):
+    images = [f for f in listdir(segmDir) if isfile(join(segmDir, f))]
+
+    if not len(images):
+        print "No images to create the video."
+        sys.exit()
+
     images = natural_sort(images)
-    img1 = cv2.imread(join(dirname, images[0]))
+    aux = cv2.imread(join(segmDir, images[0]))
 
-    height, width, layers = img1.shape
+    height, width, layers = aux.shape
 
-    video = cv2.VideoWriter('segmentation.avi', cv2.cv.CV_FOURCC('M', 'P', '4', '2'), 1.0, (width, height))
+    video = cv2.VideoWriter(name+'.avi', cv2.cv.CV_FOURCC('M', 'P', '4', '2'), 1.0, (width, height))
 
     for img in images:
-        video.write(cv2.imread(join(dirname, img)))
+        video.write(cv2.imread(join(segmDir, img)))
 
     cv2.destroyAllWindows()
     video.release()
 
 
 def natural_sort(images_list):
-    convert = lambda text: int(text) if text.isdigit() else text.lower()
-    alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)]
+    def convert(text):
+        return int(text) if text.isdigit() else text.lower()
+
+    def alphanum_key(key):
+        return [convert(c) for c in re.split('([0-9]+)', key)]
+
     return sorted(images_list, key=alphanum_key)
 
 
-def main(video):
-    # marking(video)
-    clfN = training()
-    segmentation(clfN, video)
-    # genVideo()
+def training_multiple_images():
+    train = ['240', '504', '576', '600', '1272',
+             '1488', '1512', '1536', '1776',
+             '1944', '2160', '2304', '2784']
+
+    origImg = imread(join(trainDir, 'OriginalImg'+train[0]+'.png'))
+    markImg = imread(join(trainDir, 'TrainingImg'+train[0]+'.png'))
+    ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
+
+    data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
+    data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
+    data_blueN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 0, 255)), 2))]
+
+    dataN = np.concatenate([data_redN, data_greenN, data_blueN])
+
+    targetN = np.concatenate([np.zeros(len(data_redN[:]), dtype=int),
+                              np.ones(len(data_greenN[:]), dtype=int),
+                              np.full(len(data_blueN[:]), 2, dtype=int)])
+
+    for elem in train[1:]:
+        origImg = imread(join(trainDir, 'OriginalImg'+elem+'.png'))
+        markImg = imread(join(trainDir, 'TrainingImg'+elem+'.png'))
+        ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
+
+        data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
+        data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
+        data_blueN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 0, 255)), 2))]
+
+        dataN = np.concatenate([dataN, data_redN, data_greenN, data_blueN])
+
+        targetN = np.concatenate([targetN,
+                                  np.zeros(len(data_redN[:]), dtype=int),
+                                  np.ones(len(data_greenN[:]), dtype=int),
+                                  np.full(len(data_blueN[:]), 2, dtype=int)])
+
+    return dataN, targetN
+
+def main(parser, args):
+    global video, trainImg
+
+    if args.video:
+        video = args.video
+
+    if args.trainImg:
+        trainImg = args.trainImg
+
+    # We want to mark lots of images,
+    # then choose the ones in the training process
+    if args.mark:
+        marking()
+
+    elif args.seg:
+        clfN = training()
+        segmentation(clfN, args)
+
+    if args.genVideo:
+        gen_video(args.genVideo)
 
 if __name__ == "__main__":
-    if len(sys.argv[1:]) != 1:
-        print "Expected one argument, choosing default video."
-        main("video2017-3.avi")
-    else:
-        main(sys.argv[1])
+    parser = argparse.ArgumentParser(prog='PROG')
+
+    parser.add_argument('-v', '--video',
+                        help='Select a different video.')
+
+    parser.add_argument('-ti', '--trainImg',
+                        help='Select a different trainingImg.')
+
+    group = parser.add_argument_group('Commands')
+
+    group.add_argument('-m', '--mark',
+                       action='store_true',
+                       help='Start marking process.')
+
+    group.add_argument('-s', '--seg',
+                       action='store_true', default='True',
+                       help='Start segmentation process.')
+
+    group.add_argument('-gv', '--genVideo',
+                       nargs='?', const='segmentation',
+                       help='Generate segmentation video.')
+
+    args = parser.parse_args()
+
+    main(parser, args)
