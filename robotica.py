@@ -9,6 +9,7 @@ from sklearn.neighbors.nearest_centroid import NearestCentroid
 import cv2
 import select_pixels as sel
 import argparse
+
 # from matplotlib import pyplot as plt
 # from mpl_toolkits.mplot3d import Axes3D
 # from mpl_toolkits.mplot3d import proj3d
@@ -76,28 +77,28 @@ def training(args):
 
     if not args.multiTrain:
         # Height x Width x channel
+        origImg = imread(join(trainDir, 'OriginalImg'+trainImg+'.png'))
+        # origImg = imread(join(trainDir, 'frame.png'))
+
         if not args.gimpImg:
-            origImg = imread(join(trainDir, 'OriginalImg'+trainImg+'.png'))
             markImg = imread(join(trainDir, 'TrainingImg'+trainImg+'.png'))
-            # origImg = imread(join(trainDir, 'frame.png'))
             # markImg = imread(join(trainDir, 'frame_painted.png'))
         else:
-            origImg = imread(join(trainDir, 'Gimp'+trainImg+'.png'))
             markImg = imread(join(trainDir, 'GimpTrain'+trainImg+'.png'))
 
         # Normalization: all = R+G+B, R = R/all, G = G/all, B = B/all
-        # [[[1,2,3],	         [[[1,4],                                   [[[0.1666,0.2666],                      [[[0.1666,0.3333,0.5000],
-        #   [4,5,6]],       	   [6,8],                                     [0.4000,0.3809],                        [0.2666,0.3333,0.4000]],
-        #                              [5,8]],                                    [0.2777,0.4705]],
+        # [[[1, 2, 3],                 [[[1, 4],                                     [[[1/6 , 4/15],                      [[[1/6 , 2/6 , 3/6 ],
+        #   [4, 5, 6]],                  [6, 8],                                       [6/15, 8/21],                        [4/15, 5/15, 6/15]],
+        #                                [5, 8]],                                      [5/18, 8/17]],
         #
         #
-        #  [[6,5,4],   rollaxis(x,2)  [[2,5],    np.sum(x,2)  [[ 6,15],    R/S   [[0.3333,0.3333],     rollaxis(D,0,3)   [[0.4000,0.3333,0.2666],
-        #   [8,7,6]],  ------------>   [5,7],    ---------->   [15,21],   ---->   [0.3333,0.3333],     -------------->    [0.3809,0.3333,0.2857]],
-        #                    R         [6,9]],        S        [18,17]]     D     [0.3333,0.5294]],
+        #  [[6, 5, 4],   rollaxis(x,2)  [[2, 5],   np.sum(x,2)   [[ 6,15],     R/S    [[2/6 , 5/15],     rollaxis(D,0,3)   [[6/15, 5/15, 4/15],
+        #   [8, 7, 6]],  ------------>   [5, 7],   ---------->    [15,21],   ------>   [5/15, 7/21],     -------------->    [8/21, 7/21, 6/21]],
+        #                      R         [6, 9]],       S         [18,17]]      D      [6/18, 9/17]],
         #
-        #  [[5,6,7],                  [[3,6],                                    [[0.5000,0.4000],                       [[0.2777,0.3333,0.3888],
-        #   [8,9,0]]]          	   [4,6],                                     [0.2666,0.2857],                        [0.4705,0.5294,0.0000]]]
-        #                       	   [7,0]]]                                    [0.3888,0.0000]]]
+        #  [[5, 6, 7],                  [[3, 6],                                      [[3/6 , 6/15],                       [[5/18, 6/18, 7/18],
+        #   [8, 9, 0]]]                  [4, 6],                                       [4/15, 6/21],                        [8/17, 9/17, 0/17]]]
+        #                                [7, 0]]]                                      [7/18, 0/17]]]
         ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
 
         imsave(join(normDir, 'Norm'+trainImg+'.png'), ImgNorm*255)
