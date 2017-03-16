@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import scipy.stats as stats
-import scipy.linalg as la
 from sklearn.metrics.pairwise import euclidean_distances
 import sys
-
+from scipy.spatial.distance import cdist
 
 class Classifier:
         def __init__(self):
@@ -29,13 +28,19 @@ class clasifEuclid(Classifier):
                 self.classes = range(len(listaClases))
                 # Obtenemos los centroides, para ello hallamos la media de columnas entre todos los elementos de la misma clase
                 self.centroide = [np.mean(listaClases[i], axis=0) for i in self.classes]
-                return self.centroide, self.classes
 
         def predict(self, DataMatrix):
                 """Estima el grado de pertenencia de cada dato a las clases
                 DataMatrix: matriz numpy cada fila es un dato, cada columna una medida
                 retorna una matriz, cada fila almacena los valores pertenencia"""
                 # Realizamos el calculo de la distancia euclidea, aplicando la ecuacion
+                print self.centroide[0]
+                print DataMatrix[0][0]
+                print self.calcula(DataMatrix[0][0], self.centroide[0])
+                print euclidean_distances(DataMatrix[0][0], self.centroide[0])
+                print cdist(np.array([DataMatrix[0][0]]), np.array([self.centroide[0]]), 'euclidean')
+                print euclidean_distances(DataMatrix[0][:20], self.centroide)
+                sys.exit()
                 self.data = [euclidean_distances(row, self.centroide) for row in DataMatrix]
 
         def predLabel(self, DataMatrix):
@@ -47,6 +52,13 @@ class clasifEuclid(Classifier):
                 tags = [[self.classes[np.argmax(subrow)] for subrow in row] for row in self.data]
                 return tags
 
+        def calcula(self, Punto, Centroide):
+                """Funcion auxiliar encargada de realizar el calculo de la distancia
+                euclidea, de acuerdo a: (Z1,...Zn, -1/2(Zt*Z)) * (X1,...Xn,1)"""
+                Zmatrix = np.append(Centroide, -1.0/2*np.dot(Centroide.T, Centroide))
+                Xmatrix = np.append(Punto, 1)
+                resul = np.dot(Zmatrix, Xmatrix)
+                return resul
 
 class clasifCuadrad(Classifier):
         def __init__(self):

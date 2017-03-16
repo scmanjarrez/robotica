@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import argparse
 import numpy as np
 import re
 import sys
@@ -6,9 +7,10 @@ from os import listdir, mkdir
 from os.path import isfile, join
 from scipy.misc import imread, imsave
 from sklearn.neighbors.nearest_centroid import NearestCentroid
+
 import cv2
 import select_pixels as sel
-import argparse
+
 
 # from matplotlib import pyplot as plt
 # from mpl_toolkits.mplot3d import Axes3D
@@ -42,12 +44,12 @@ def marking():
             # n==110 =                     0110 1110
 
             # (n)ext image
-            if key & 0xFF == ord('n'):
+            if (key & 0xFF) == ord('n'):
                 count += 1
                 continue
 
             # mark image, (s)top
-            if key & 0xFF == ord('s'):
+            if (key & 0xFF) == ord('s'):
                 # change from BGR to RGB format
                 imRGB = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -58,7 +60,7 @@ def marking():
                 imsave(join(trainDir, 'TrainingImg'+str(count)+'.png'), markImg)
 
             # (q)uit program
-            if key & 0xFF == ord('q'):
+            if (key & 0xFF) == ord('q'):
                 break
 
         elif not ret:
@@ -101,7 +103,8 @@ def training(args):
         #                                [7, 0]]]                                      [7/18, 0/17]]]
         ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
 
-        imsave(join(normDir, 'Norm'+trainImg+'.png'), ImgNorm*255)
+        if args.normImg:
+            imsave(join(normDir, 'Norm'+trainImg+'.png'), ImgNorm*255)
 
         # Get marked points from original image
         # np.equal(markImg, (255, 0, 0) --> X*Y*3
@@ -156,15 +159,18 @@ def segmentation(clfN, args):
     while(capture.isOpened()):
         ret, frame = capture.read()
         if ret and not count % 24:
+            rgbFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
             cv2.imshow('Original', frame)
+
             shape = frame.shape
 
-            ImgNorm = np.rollaxis((np.rollaxis(frame, 2)+0.0)/np.sum(frame, 2), 0, 3)
+            ImgNorm = np.rollaxis((np.rollaxis(rgbFrame, 2)+0.0)/np.sum(rgbFrame, 2), 0, 3)
 
             # Reshape in order to reduce the 3-dimensional array to 2-dimensional (needed for predict)
             labelsN = clfN.predict(ImgNorm.reshape(shape[0]*shape[1], 3))
 
-            paleta = np.array([[0, 0, 255], [0, 0, 0], [255, 0, 0]], dtype=np.uint8)
+            paleta = np.array([[255, 0, 0], [0, 0, 0], [0, 0, 255]], dtype=np.uint8)
 
             # Reshape back, from 2-dimensional to 3-dimensional
             auxN = paleta[labelsN]
@@ -172,16 +178,60 @@ def segmentation(clfN, args):
 
             segmImgN = cv2.cvtColor(segmN, cv2.COLOR_RGB2BGR)
 
+            gray = cv2.cvtColor(segmN, cv2.COLOR_RGB2GRAY)
+
+            gauss_blur = cv2.GaussianBlur(gray, (5, 5), 2)
+
+            retval, thresh = cv2.threshold(gauss_blur, 10, 255, cv2.THRESH_BINARY)
+
+            cnts, hier = cv2.findContours(thresh.copy()[90:], cv2.RETR_EXTERNAL,
+                                          cv2.CHAIN_APPROX_SIMPLE)
+
+            # drawContours is destructive
+            copy = frame.copy()[90:]
+
+            # cnts, hier = cv2.findContours(gauss_blur.copy()[90:], cv2.RETR_EXTERNAL,
+            #                               cv2.CHAIN_APPROX_SIMPLE)
+
+            # # Return list of indices of points in contour
+            # chullList = [cv2.convexHull(cont, returnPoints=False) for cont in cnts]
+
+            # # Return convexity defects from previous contours, each contour must have at least 3 points
+            # # Convexity Defect = [start_point, end_point, farthest_point, distance_to_farthest_point]
+            # convDefs = [cv2.convexityDefects(cont, chull) for (cont, chull) in
+            #             zip(cnts, chullList) if len(cont) > 3 and len(chull) > 3]
+
+            # for pos, cont in enumerate(cnts):
+            #     cnvDef = convDefs[pos]
+            #     # Saco la lista de agujeros del contorno
+            #     listConvDefs = cnvDef[:, 0, :].tolist()
+            #     # Devuelvo la lista de agujeros mayores de 4 pixeles, aproximadamente
+            #     bigger_4_px = [[init, end, mid, length] for init, end, mid, length in listConvDefs if length > 1000]
+
+            #     if len(bigger_4_px):
+            #         print bigger_4_px[0]
+            #         cv2.line(copy, bigger_4_px[0][0], bigger_4_px[0][1], [255, 255, 255], 2)
+            #         cv2.circle(copy, bigger_4_px[0][2], 5, [0, 0, 255], -1)
+
+            cv2.drawContours(copy, cnts, -1, (0, 255, 0), 1)
+
+            cv2.imshow("Contours", copy)
+
             cv2.imshow("SegmNormalized", segmImgN)
 
             if args.genVideo:
                 cv2.imwrite(join(segmDir, 'SegmImg'+str(count)+'.png'), segmImgN)
 
             # compare key pressed with the ascii code of the character
-            key = cv2.waitKey(100)
+            key = cv2.waitKey(1000)
+
+            # (n)ext image
+            if (key & 0xFF) == ord('n'):
+                count += 1
+                continue
 
             # (q)uit program
-            if key & 0xFF == ord('q'):
+            if (key & 0xFF) == ord('q'):
                 break
 
         elif not ret:
@@ -234,7 +284,8 @@ def training_multiple_images():
     markImg = imread(join(trainDir, 'TrainingImg'+train[0]+'.png'))
     ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
 
-    imsave(join(normDir, 'Norm'+train[0]+'.png'), ImgNorm*255)
+    if args.normImg:
+        imsave(join(normDir, 'Norm'+train[0]+'.png'), ImgNorm*255)
 
     data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
     data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
@@ -252,7 +303,8 @@ def training_multiple_images():
 
         ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
 
-        imsave(join(normDir, 'Norm'+elem+'.png'), ImgNorm*255)
+        if args.normImg:
+            imsave(join(normDir, 'Norm'+elem+'.png'), ImgNorm*255)
 
         data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
         data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
@@ -312,6 +364,10 @@ if __name__ == "__main__":
     parser.add_argument('-g', '--gimpImg',
                         action='store_true',
                         help='Train the system with a fully colored image.')
+
+    parser.add_argument('-n', '--normImg',
+                        action='store_true',
+                        help='Save normalized traning images.')
 
     group = parser.add_argument_group('Commands')
 
