@@ -193,31 +193,52 @@ def segmentation(clfN, args):
             # cnts, hier = cv2.findContours(gauss_blur.copy()[90:], cv2.RETR_EXTERNAL,
             #                               cv2.CHAIN_APPROX_SIMPLE)
 
-            # # Return list of indices of points in contour
-            # chullList = [cv2.convexHull(cont, returnPoints=False) for cont in cnts]
+            # Return list of indices of points in contour
+            chullList = [cv2.convexHull(cont, returnPoints=False) for cont in cnts]
 
-            # # Return convexity defects from previous contours, each contour must have at least 3 points
-            # # Convexity Defect = [start_point, end_point, farthest_point, distance_to_farthest_point]
-            # convDefs = [cv2.convexityDefects(cont, chull) for (cont, chull) in
-            #             zip(cnts, chullList) if len(cont) > 3 and len(chull) > 3]
+            # Return convexity defects from previous contours, each contour must have at least 3 points
+            # Convexity Defect -> [start_point, end_point, farthest_point, distance_to_farthest_point]
+            convDefs = [cv2.convexityDefects(cont, chull) for (cont, chull) in
+                        zip(cnts, chullList) if len(cont) > 3 and len(chull) > 3]
 
-            # for pos, cont in enumerate(cnts):
-            #     cnvDef = convDefs[pos]
-            #     # Saco la lista de agujeros del contorno
-            #     listConvDefs = cnvDef[:, 0, :].tolist()
-            #     # Devuelvo la lista de agujeros mayores de 4 pixeles, aproximadamente
-            #     bigger_4_px = [[init, end, mid, length] for init, end, mid, length in listConvDefs if length > 1000]
+            listConvDefs = []
+            listCont = []
+            # Only save the convexity defects whose hole is larger than ~4 pixels.
+            for pos, el in enumerate(convDefs):
+                aux = el[:, :, 3] > 1000
+                if any(aux):
+                    listConvDefs.append(el[aux])
+                    listCont.append(cnts[pos])
 
-            #     if len(bigger_4_px):
-            #         print bigger_4_px[0]
-            #         cv2.line(copy, bigger_4_px[0][0], bigger_4_px[0][1], [255, 255, 255], 2)
-            #         cv2.circle(copy, bigger_4_px[0][2], 5, [0, 0, 255], -1)
+            if not listConvDefs:
+                cv2.putText(copy, "Linea recta", (0, 140),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+
+            for pos, el in enumerate(listConvDefs):
+                for i in range(el.shape[0]):
+                    if el.shape[0] == 1:
+                        cv2.putText(copy, "Curva", (0, 140),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+                    elif el.shape[0] == 3:
+                        cv2.putText(copy, "Cruce 2 salidas", (0, 140),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+                    elif el.shape[0] == 4:
+                        cv2.putText(copy, "Cruce 3 salidas", (0, 140),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+
+                    # Paint convex hull and hole
+                    # s, e, f, d = el[i]
+                    # start = tuple(listCont[pos][s][0])
+                    # end = tuple(listCont[pos][e][0])
+                    # far = tuple(listCont[pos][f][0])
+                    # cv2.line(copy, start, end, [0, 0, 0], 2)
+                    # cv2.circle(copy, far, 3, [0, 0, 255], -1)
 
             cv2.drawContours(copy, cnts, -1, (0, 255, 0), 1)
 
-            cv2.imshow("Contours", copy)
-
             cv2.imshow("SegmNormalized", segmImgN)
+
+            cv2.imshow("Contours", copy)
 
             if args.genVideo:
                 cv2.imwrite(join(segmDir, 'SegmImg'+str(count)+'.png'), segmImgN)
