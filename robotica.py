@@ -167,76 +167,88 @@ def segmentation(clfN, args):
 
             ImgNorm = np.rollaxis((np.rollaxis(rgbFrame, 2)+0.0)/np.sum(rgbFrame, 2), 0, 3)
 
-            # Reshape in order to reduce the 3-dimensional array to 2-dimensional (needed for predict)
-            labelsN = clfN.predict(ImgNorm.reshape(shape[0]*shape[1], 3))
+            # Reshape in order to reduce the 3-dimensional array to 1-dimensional (needed for predict)
+            reshape = ImgNorm.reshape(shape[0]*shape[1], 3)
+            labelsN = clfN.predict(reshape)
+
+            # Reshape back, from 1-dimensional to 2-dimensional
+            reshape_back = labelsN.reshape(shape[0], shape[1])
+
+            # Indices of line pixels
+            line_px = (reshape_back == 2).astype(np.uint8)[90:, :]*255
+
+            # Indices of arrow/mark pixels
+            arrow_mark_px = (reshape_back == 0).astype(np.uint8)[90:, :]*255
 
             paleta = np.array([[255, 0, 0], [0, 0, 0], [0, 0, 255]], dtype=np.uint8)
 
-            # Reshape back, from 2-dimensional to 3-dimensional
-            auxN = paleta[labelsN]
-            segmN = auxN.reshape(shape[0], shape[1], 3)
+            # Automatic reshape is being done here, from 2-dimensional to 3-dimensional array [[1, 1, ...]] -> [[[0,0,0], ....]]
+            aux = paleta[reshape_back]
 
-            segmImgN = cv2.cvtColor(segmN, cv2.COLOR_RGB2BGR)
+            segmImgN = cv2.cvtColor(aux, cv2.COLOR_RGB2BGR)
 
-            gray = cv2.cvtColor(segmN, cv2.COLOR_RGB2GRAY)
+            gauss_l = cv2.GaussianBlur(line_px, (5, 5), 2)
+            gauss_am = cv2.GaussianBlur(arrow_mark_px, (5, 5), 2)
 
-            gauss_blur = cv2.GaussianBlur(gray, (5, 5), 2)
+            cnts_l, hier_l = cv2.findContours(gauss_l, cv2.RETR_LIST,
+                                              cv2.CHAIN_APPROX_NONE)
 
-            retval, thresh = cv2.threshold(gauss_blur, 10, 255, cv2.THRESH_BINARY)
+            cnts_am, hier_am = cv2.findContours(gauss_am, cv2.RETR_LIST,
+                                                cv2.CHAIN_APPROX_NONE)
 
-            cnts, hier = cv2.findContours(thresh.copy()[90:], cv2.RETR_EXTERNAL,
-                                          cv2.CHAIN_APPROX_SIMPLE)
-
-            # drawContours is destructive
+            # DrawContours is destructive
             copy = frame.copy()[90:]
 
-            # cnts, hier = cv2.findContours(gauss_blur.copy()[90:], cv2.RETR_EXTERNAL,
-            #                               cv2.CHAIN_APPROX_SIMPLE)
-
             # Return list of indices of points in contour
-            chullList = [cv2.convexHull(cont, returnPoints=False) for cont in cnts]
+            chullList_l = [cv2.convexHull(cont, returnPoints=False) for cont in cnts_l]
+            # chullList_am = [cv2.convexHull(cont, returnPoints=False) for cont in cnts_am]
 
             # Return convexity defects from previous contours, each contour must have at least 3 points
             # Convexity Defect -> [start_point, end_point, farthest_point, distance_to_farthest_point]
-            convDefs = [cv2.convexityDefects(cont, chull) for (cont, chull) in
-                        zip(cnts, chullList) if len(cont) > 3 and len(chull) > 3]
+            convDefs_l = [cv2.convexityDefects(cont, chull) for (cont, chull) in
+                          zip(cnts_l, chullList_l) if len(cont) > 3 and len(chull) > 3]
+            # convDefs_am = [cv2.convexityDefects(cont, chull) for (cont, chull) in
+            #                zip(cnts_am, chullList_am) if len(cont) > 3 and len(chull) > 3]
 
             listConvDefs = []
             listCont = []
             # Only save the convexity defects whose hole is larger than ~4 pixels.
-            for pos, el in enumerate(convDefs):
-                aux = el[:, :, 3] > 1000
-                if any(aux):
-                    listConvDefs.append(el[aux])
-                    listCont.append(cnts[pos])
+            for pos, el in enumerate(convDefs_l):
+                if el is not None:
+                    aux = el[:, :, 3] > 1000
+                    if any(aux):
+                        listConvDefs.append(el[aux])
+                        listCont.append(cnts_l[pos])
 
             if not listConvDefs:
                 cv2.putText(copy, "Linea recta", (0, 140),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
             for pos, el in enumerate(listConvDefs):
+                print "pos: ", pos, " new: ", listCont[pos]
                 for i in range(el.shape[0]):
                     if el.shape[0] == 1:
                         cv2.putText(copy, "Curva", (0, 140),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-                    elif el.shape[0] == 3:
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    elif el.shape[0] == 2 or el.shape[0] == 3:
                         cv2.putText(copy, "Cruce 2 salidas", (0, 140),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     elif el.shape[0] == 4:
                         cv2.putText(copy, "Cruce 3 salidas", (0, 140),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
                     # Paint convex hull and hole
-                    # s, e, f, d = el[i]
-                    # start = tuple(listCont[pos][s][0])
-                    # end = tuple(listCont[pos][e][0])
-                    # far = tuple(listCont[pos][f][0])
-                    # cv2.line(copy, start, end, [0, 0, 0], 2)
-                    # cv2.circle(copy, far, 3, [0, 0, 255], -1)
+                    s, e, f, d = el[i]
+                    print "s, e, f, d: ", s, e, f, d
+                    start = tuple(listCont[pos][s][0])
+                    end = tuple(listCont[pos][e][0])
+                    far = tuple(listCont[pos][f][0])
+                    cv2.line(copy, start, end, [0, 255, 0], 2)
+                    cv2.circle(copy, far, 3, [0, 0, 255], -1)
 
-            cv2.drawContours(copy, cnts, -1, (0, 255, 0), 1)
+            cv2.drawContours(copy, cnts_l, -1, (0, 0, 0), 1)
 
-            cv2.imshow("SegmNormalized", segmImgN)
+            # cv2.imshow("SegmNormalized", segmImgN)
 
             cv2.imshow("Contours", copy)
 
