@@ -18,7 +18,7 @@ import select_pixels as sel
 
 
 video = 'video2017-3.avi'
-trainImg = '1512'
+trainImg = '576'
 trainDir = 'TrainFrames'
 segmDir = 'SegmFrames'
 normDir = 'NormFrames'
@@ -80,11 +80,9 @@ def training(args):
     if not args.multiTrain:
         # Height x Width x channel
         origImg = imread(join(trainDir, 'OriginalImg'+trainImg+'.png'))
-        # origImg = imread(join(trainDir, 'frame.png'))
 
         if not args.gimpImg:
             markImg = imread(join(trainDir, 'TrainingImg'+trainImg+'.png'))
-            # markImg = imread(join(trainDir, 'frame_painted.png'))
         else:
             markImg = imread(join(trainDir, 'GimpTrain'+trainImg+'.png'))
 
