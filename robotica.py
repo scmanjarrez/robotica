@@ -174,10 +174,10 @@ def segmentation(clfN, args):
             # Reshape back, from 1-dimensional to 2-dimensional
             reshape_back = labelsN.reshape(shape[0], shape[1])
 
-            # Indices of line pixels
+            # Image with the line in white
             line_px = (reshape_back == 2).astype(np.uint8)[90:, :]*255
 
-            # Indices of arrow/mark pixels
+            # Image with the arrow/mark in white
             arrow_mark_px = (reshape_back == 0).astype(np.uint8)[90:, :]*255
 
             paleta = np.array([[255, 0, 0], [0, 0, 0], [0, 0, 255]], dtype=np.uint8)
@@ -187,49 +187,83 @@ def segmentation(clfN, args):
 
             segmImgN = cv2.cvtColor(aux, cv2.COLOR_RGB2BGR)
 
-            gauss_l = cv2.GaussianBlur(line_px, (5, 5), 2)
-            gauss_am = cv2.GaussianBlur(arrow_mark_px, (5, 5), 2)
-
-            cnts_l, hier_l = cv2.findContours(gauss_l, cv2.RETR_LIST,
+            # Find contours of line
+            cnts_l, hier_l = cv2.findContours(line_px, cv2.RETR_LIST,
                                               cv2.CHAIN_APPROX_NONE)
 
-            cnts_am, hier_am = cv2.findContours(gauss_am, cv2.RETR_LIST,
+            # Find contours of arror/mark
+            cnts_am, hier_am = cv2.findContours(arrow_mark_px, cv2.RETR_LIST,
                                                 cv2.CHAIN_APPROX_NONE)
+
+            # Removes small contours, i.e: small squares
+            newcnts_l = [cnt for cnt in cnts_l if len(cnt) > 100]
+            newcnts_am = [cnt for cnt in cnts_am if len(cnt) > 50]
 
             # DrawContours is destructive
             copy = frame.copy()[90:]
 
             # Return list of indices of points in contour
-            chullList_l = [cv2.convexHull(cont, returnPoints=False) for cont in cnts_l]
-            # chullList_am = [cv2.convexHull(cont, returnPoints=False) for cont in cnts_am]
+            chullList_l = [cv2.convexHull(cont, returnPoints=False) for cont in newcnts_l]
+            chullList_am = [cv2.convexHull(cont, returnPoints=False) for cont in newcnts_am]
 
             # Return convexity defects from previous contours, each contour must have at least 3 points
             # Convexity Defect -> [start_point, end_point, farthest_point, distance_to_farthest_point]
             convDefs_l = [cv2.convexityDefects(cont, chull) for (cont, chull) in
-                          zip(cnts_l, chullList_l) if len(cont) > 3 and len(chull) > 3]
-            # convDefs_am = [cv2.convexityDefects(cont, chull) for (cont, chull) in
-            #                zip(cnts_am, chullList_am) if len(cont) > 3 and len(chull) > 3]
+                          zip(newcnts_l, chullList_l) if len(cont) > 3 and len(chull) > 3]
 
-            listConvDefs = []
-            listCont = []
-            # Only save the convexity defects whose hole is larger than ~4 pixels.
+            convDefs_am = [cv2.convexityDefects(cont, chull) for (cont, chull) in
+                           zip(newcnts_am, chullList_am) if len(cont) > 3 and len(chull) > 3]
+
+            listConvDefs_l = []
+            listCont_l = []
+            listConvDefs_am = []
+            listCont_am = []
+            # Only save the convexity defects whose hole is larger than ~4 pixels (1000/256).
             for pos, el in enumerate(convDefs_l):
                 if el is not None:
                     aux = el[:, :, 3] > 1000
                     if any(aux):
-                        listConvDefs.append(el[aux])
-                        listCont.append(cnts_l[pos])
+                        listConvDefs_l.append(el[aux])
+                        listCont_l.append(newcnts_l[pos])
 
-            if not listConvDefs:
+            for pos, el in enumerate(convDefs_am):
+                if el is not None:
+                    aux = el[:, :, 3] > 1000
+                    if any(aux):
+                        listConvDefs_am.append(el[aux])
+                        listCont_am.append(newcnts_am[pos])
+
+            if not listConvDefs_l:
                 cv2.putText(copy, "Linea recta", (0, 140),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
-            for pos, el in enumerate(listConvDefs):
-                print "pos: ", pos, " new: ", listCont[pos]
+            for pos, el in enumerate(listConvDefs_l):
                 for i in range(el.shape[0]):
                     if el.shape[0] == 1:
-                        cv2.putText(copy, "Curva", (0, 140),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        # [NormX, NormY, PointX, PointY]
+                        [vx, vy, x, y] = cv2.fitLine(listCont_l[pos], cv2.cv.CV_DIST_L2, 0, 0.01, 0.01)
+                        slope = vy/vx
+                        if slope > 0:
+                            cv2.putText(copy, "Curva a izquierda", (0, 140),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        else:
+                            cv2.putText(copy, "Curva a derecha", (0, 140),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+
+                        # lefty = int((-x*vy/vx) + y)
+                        # righty = int(((copy.shape[1]-x)*vy/vx)+y)
+                        # cv2.line(copy,(copy.shape[1]-1,righty),(0,lefty),255,2)
+
+                        # [(CenterX, CenterY), (SizeWidth, SizeHeight), Angle]
+                        # ellipse = cv2.fitEllipse(listCont_l[pos])
+                        # cv2.ellipse(copy, ellipse, (0, 255, 0), 2)
+                        # print ellipse[2]
+                        # if ellipse[2] > 90:
+                        #     cv2.putText(copy, "Curva a izquierda", (0, 140),
+                        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        # else:
+                        #     cv2.putText(copy, "Curva a derecha", (0, 140),
+                        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     elif el.shape[0] == 2 or el.shape[0] == 3:
                         cv2.putText(copy, "Cruce 2 salidas", (0, 140),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
@@ -238,15 +272,15 @@ def segmentation(clfN, args):
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
                     # Paint convex hull and hole
-                    s, e, f, d = el[i]
-                    print "s, e, f, d: ", s, e, f, d
-                    start = tuple(listCont[pos][s][0])
-                    end = tuple(listCont[pos][e][0])
-                    far = tuple(listCont[pos][f][0])
-                    cv2.line(copy, start, end, [0, 255, 0], 2)
-                    cv2.circle(copy, far, 3, [0, 0, 255], -1)
+                    # s, e, f, d = el[i]
+                    # start = tuple(listCont_l[pos][s][0])
+                    # end = tuple(listCont_l[pos][e][0])
+                    # far = tuple(listCont_l[pos][f][0])
+                    # cv2.line(copy, start, end, [0, 255, 0], 2)
+                    # cv2.circle(copy, far, 3, [0, 0, 255], -1)
 
-            cv2.drawContours(copy, cnts_l, -1, (0, 0, 0), 1)
+            cv2.drawContours(copy, newcnts_l, -1, (255, 0, 0), 1)
+            cv2.drawContours(copy, newcnts_am, -1, (0, 0, 255), 1)
 
             # cv2.imshow("SegmNormalized", segmImgN)
 
