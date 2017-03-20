@@ -22,6 +22,9 @@ trainImg = '576'
 trainDir = 'TrainFrames'
 segmDir = 'SegmFrames'
 normDir = 'NormFrames'
+analyDir = 'AnalyFrames'
+chullDir = 'ChullFrames'
+vidDir = 'OutputVideos'
 
 
 def marking():
@@ -74,17 +77,12 @@ def marking():
 
 
 def training(args):
-    check_dir(trainDir)
     check_dir(normDir)
 
     if not args.multiTrain:
         # Height x Width x channel
         origImg = imread(join(trainDir, 'OriginalImg'+trainImg+'.png'))
-
-        if not args.gimpImg:
-            markImg = imread(join(trainDir, 'TrainingImg'+trainImg+'.png'))
-        else:
-            markImg = imread(join(trainDir, 'GimpTrain'+trainImg+'.png'))
+        markImg = imread(join(trainDir, 'TrainingImg'+trainImg+'.png'))
 
         # Normalization: all = R+G+B, R = R/all, G = G/all, B = B/all
         # [[[1, 2, 3],                 [[[1, 4],                                     [[[1/6 , 4/15],                      [[[1/6 , 2/6 , 3/6 ],
@@ -100,9 +98,6 @@ def training(args):
         #   [8, 9, 0]]]                  [4, 6],                                       [4/15, 6/21],                        [8/17, 9/17, 0/17]]]
         #                                [7, 0]]]                                      [7/18, 0/17]]]
         ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
-
-        if args.normImg:
-            imsave(join(normDir, 'Norm'+trainImg+'.png'), ImgNorm*255)
 
         # Get marked points from original image
         # np.equal(markImg, (255, 0, 0) --> X*Y*3
@@ -152,10 +147,19 @@ def segmentation(clfN, args):
     count = 0
 
     if args.genVideo:
-        check_dir(segmDir)
+        if args.genVideo == 'segm':
+            check_dir(segmDir)
+        elif args.genVideo == 'norm':
+            check_dir(normDir)
+        elif args.genVideo == 'analy':
+            check_dir(analyDir)
+        elif args.genVideo == 'chull':
+            check_dir(chullDir)
 
+    pause = False
     while(capture.isOpened()):
-        ret, frame = capture.read()
+        if not pause:
+            ret, frame = capture.read()
         if ret and not count % 24:
             rgbFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -164,6 +168,9 @@ def segmentation(clfN, args):
             shape = frame.shape
 
             ImgNorm = np.rollaxis((np.rollaxis(rgbFrame, 2)+0.0)/np.sum(rgbFrame, 2), 0, 3)
+
+            if args.genVideo and args.genVideo == 'norm':
+                imsave(join(normDir, 'Norm'+str(count)+'.png'), ImgNorm*255)
 
             # Reshape in order to reduce the 3-dimensional array to 1-dimensional (needed for predict)
             reshape = ImgNorm.reshape(shape[0]*shape[1], 3)
@@ -178,6 +185,7 @@ def segmentation(clfN, args):
             # Image with the arrow/mark in white
             arrow_mark_px = (reshape_back == 0).astype(np.uint8)[90:, :]*255
 
+            # asd = arrow_mark_px.copy()
             paleta = np.array([[255, 0, 0], [0, 0, 0], [0, 0, 255]], dtype=np.uint8)
 
             # Automatic reshape is being done here, from 2-dimensional to 3-dimensional array [[1, 1, ...]] -> [[[0,0,0], ....]]
@@ -185,6 +193,7 @@ def segmentation(clfN, args):
 
             segmImgN = cv2.cvtColor(aux, cv2.COLOR_RGB2BGR)
 
+            # Should we use cv2.CHAIN_APPROX_NONE? or cv2.CHAIN_APPROX_SIMPLE? the former stores all points, the latter stores the basic ones
             # Find contours of line
             cnts_l, hier_l = cv2.findContours(line_px, cv2.RETR_LIST,
                                               cv2.CHAIN_APPROX_NONE)
@@ -198,7 +207,7 @@ def segmentation(clfN, args):
             newcnts_am = [cnt for cnt in cnts_am if len(cnt) > 50]
 
             # DrawContours is destructive
-            copy = frame.copy()[90:]
+            analy = frame.copy()[90:]
 
             # Return list of indices of points in contour
             chullList_l = [cv2.convexHull(cont, returnPoints=False) for cont in newcnts_l]
@@ -232,7 +241,7 @@ def segmentation(clfN, args):
                         listCont_am.append(newcnts_am[pos])
 
             if not listConvDefs_l:
-                cv2.putText(copy, "Linea recta", (0, 140),
+                cv2.putText(analy, "Linea recta", (0, 140),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
             for pos, el in enumerate(listConvDefs_l):
@@ -242,50 +251,51 @@ def segmentation(clfN, args):
                         [vx, vy, x, y] = cv2.fitLine(listCont_l[pos], cv2.cv.CV_DIST_L2, 0, 0.01, 0.01)
                         slope = vy/vx
                         if slope > 0:
-                            cv2.putText(copy, "Curva a izquierda", (0, 140),
+                            cv2.putText(analy, "Curva a izquierda", (0, 140),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                         else:
-                            cv2.putText(copy, "Curva a derecha", (0, 140),
+                            cv2.putText(analy, "Curva a derecha", (0, 140),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
-                        # lefty = int((-x*vy/vx) + y)
-                        # righty = int(((copy.shape[1]-x)*vy/vx)+y)
-                        # cv2.line(copy,(copy.shape[1]-1,righty),(0,lefty),255,2)
-
-                        # [(CenterX, CenterY), (SizeWidth, SizeHeight), Angle]
-                        # ellipse = cv2.fitEllipse(listCont_l[pos])
-                        # cv2.ellipse(copy, ellipse, (0, 255, 0), 2)
-                        # print ellipse[2]
-                        # if ellipse[2] > 90:
-                        #     cv2.putText(copy, "Curva a izquierda", (0, 140),
-                        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                        # else:
-                        #     cv2.putText(copy, "Curva a derecha", (0, 140),
-                        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     elif el.shape[0] == 2 or el.shape[0] == 3:
-                        cv2.putText(copy, "Cruce 2 salidas", (0, 140),
+                        cv2.putText(analy, "Cruce 2 salidas", (0, 140),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     elif el.shape[0] == 4:
-                        cv2.putText(copy, "Cruce 3 salidas", (0, 140),
+                        cv2.putText(analy, "Cruce 3 salidas", (0, 140),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
-                    # Paint convex hull and hole
-                    # s, e, f, d = el[i]
-                    # start = tuple(listCont_l[pos][s][0])
-                    # end = tuple(listCont_l[pos][e][0])
-                    # far = tuple(listCont_l[pos][f][0])
-                    # cv2.line(copy, start, end, [0, 255, 0], 2)
-                    # cv2.circle(copy, far, 3, [0, 0, 255], -1)
+                    if args.genVideo and args.genVideo == 'chull':
+                        # Paint convex hull and hole
+                        s, e, f, d = el[i]
+                        start = tuple(listCont_l[pos][s][0])
+                        end = tuple(listCont_l[pos][e][0])
+                        far = tuple(listCont_l[pos][f][0])
+                        cv2.line(analy, start, end, [0, 255, 0], 2)
+                        cv2.circle(analy, far, 3, [0, 0, 255], -1)
 
-            cv2.drawContours(copy, newcnts_l, -1, (255, 0, 0), 1)
-            cv2.drawContours(copy, newcnts_am, -1, (0, 0, 255), 1)
+            if args.genVideo and args.genVideo == 'chull':
+                for pos, el in enumerate(listConvDefs_am):
+                    for i in range(el.shape[0]):
+                        # Paint convex hull and hole
+                        s, e, f, d = el[i]
+                        start = tuple(listCont_am[pos][s][0])
+                        end = tuple(listCont_am[pos][e][0])
+                        far = tuple(listCont_am[pos][f][0])
+                        cv2.line(analy, start, end, [0, 255, 0], 2)
+                        cv2.circle(analy, far, 3, [0, 0, 255], -1)
 
-            # cv2.imshow("SegmNormalized", segmImgN)
+            cv2.drawContours(analy, newcnts_l, -1, (255, 0, 0), 1)
+            cv2.drawContours(analy, newcnts_am, -1, (0, 0, 255), 1)
 
-            cv2.imshow("Contours", copy)
+            cv2.imshow("Contours", analy)
 
             if args.genVideo:
-                cv2.imwrite(join(segmDir, 'SegmImg'+str(count)+'.png'), segmImgN)
+                if args.genVideo == 'segm':
+                    cv2.imwrite(join(segmDir, 'SegmImg'+str(count)+'.png'), segmImgN)
+                elif args.genVideo == 'analy':
+                    cv2.imwrite(join(analyDir, 'AnalyImg'+str(count)+'.png'), analy)
+                elif args.genVideo == 'chull':
+                    cv2.imwrite(join(chullDir, 'ChullImg'+str(count)+'.png'), analy)
 
             # compare key pressed with the ascii code of the character
             key = cv2.waitKey(1000)
@@ -299,6 +309,10 @@ def segmentation(clfN, args):
             if (key & 0xFF) == ord('q'):
                 break
 
+            # (p)ause program
+            if (key & 0xFF) == ord('p'):
+                pause = not pause
+
         elif not ret:
             print "End of video"
             break
@@ -309,22 +323,35 @@ def segmentation(clfN, args):
     cv2.destroyAllWindows()
 
 
-def gen_video(name):
-    images = [f for f in listdir(segmDir) if isfile(join(segmDir, f))]
+def gen_video(name, procedure):
+    check_dir(vidDir)
+
+    auxDir = None
+
+    if procedure == 'segm':
+        auxDir = segmDir
+    elif procedure == 'norm':
+        auxDir = normDir
+    elif procedure == 'analy':
+        auxDir = analyDir
+    elif procedure == 'chull':
+        auxDir = chullDir
+
+    images = [f for f in listdir(auxDir) if isfile(join(auxDir, f))]
 
     if not len(images):
         print "No images to create the video."
         sys.exit()
 
     images = natural_sort(images)
-    aux = cv2.imread(join(segmDir, images[0]))
+    aux = cv2.imread(join(auxDir, images[0]))
 
     height, width, layers = aux.shape
 
-    video = cv2.VideoWriter(name+'.avi', cv2.cv.CV_FOURCC('M', 'P', '4', '2'), 1.0, (width, height))
+    video = cv2.VideoWriter(join(vidDir, name+'.avi'), cv2.cv.CV_FOURCC('M', 'P', '4', '2'), 1.0, (width, height))
 
     for img in images:
-        video.write(cv2.imread(join(segmDir, img)))
+        video.write(cv2.imread(join(auxDir, img)))
 
     cv2.destroyAllWindows()
     video.release()
@@ -349,9 +376,6 @@ def training_multiple_images():
     markImg = imread(join(trainDir, 'TrainingImg'+train[0]+'.png'))
     ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
 
-    if args.normImg:
-        imsave(join(normDir, 'Norm'+train[0]+'.png'), ImgNorm*255)
-
     data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
     data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
     data_blueN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 0, 255)), 2))]
@@ -367,9 +391,6 @@ def training_multiple_images():
         markImg = imread(join(trainDir, 'TrainingImg'+elem+'.png'))
 
         ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
-
-        if args.normImg:
-            imsave(join(normDir, 'Norm'+elem+'.png'), ImgNorm*255)
 
         data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
         data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
@@ -402,16 +423,17 @@ def main(parser, args):
     if args.trainImg:
         trainImg = args.trainImg
 
-    # Mark lots of images
-    if args.mark:
-        marking()
-    # Select the ones you want to train
-    elif args.seg:
-        clfN = training(args)
-        segmentation(clfN, args)
+    # # Mark lots of images
+    # if args.mark:
+    #     marking()
+    # # Select the ones you want to train
+    # elif args.seg:
+    #     clfN = training(args)
+    #     segmentation(clfN, args)
 
     if args.genVideo:
-        gen_video(args.genVideo)
+        gen_video(args.output, args.genVideo)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='PROG')
@@ -426,13 +448,10 @@ if __name__ == "__main__":
                         action='store_true',
                         help='Train the system with multiple images.')
 
-    parser.add_argument('-g', '--gimpImg',
-                        action='store_true',
-                        help='Train the system with a fully colored image.')
-
-    parser.add_argument('-n', '--normImg',
-                        action='store_true',
-                        help='Save normalized traning images.')
+    parser.add_argument('-o', '--output',
+                        nargs='?', const='video_output',
+                        default='video_output',
+                        help='Choose the output video name.')
 
     group = parser.add_argument_group('Commands')
 
@@ -445,8 +464,9 @@ if __name__ == "__main__":
                        help='Start segmentation process.')
 
     group.add_argument('-gv', '--genVideo',
-                       nargs='?', const='segmentation',
-                       help='Generate segmentation video.')
+                       choices=['segm', 'norm', 'analy', 'chull'],
+                       nargs='?', const='analy',
+                       help='Generate choosen procedure video.')
 
     args = parser.parse_args()
 
