@@ -31,10 +31,12 @@ def marking():
     capture = cv2.VideoCapture(video)
     count = 0
 
-    check_dir(trainDir)
+    make_dir(trainDir)
 
+    pause = False
     while(capture.isOpened()):
-        ret, frame = capture.read()
+        if not pause:
+            ret, frame = capture.read()
         if ret and not count % 24:
             cv2.imshow('Frame', frame)
 
@@ -66,6 +68,10 @@ def marking():
             if (key & 0xFF) == ord('q'):
                 break
 
+            # (p)ause program
+            if (key & 0xFF) == ord('p'):
+                pause = not pause
+
         elif not ret:
             print "End of video"
             break
@@ -77,64 +83,60 @@ def marking():
 
 
 def training(args):
-    check_dir(normDir)
+    make_dir(normDir)
 
-    if not args.multiTrain:
-        # Height x Width x channel
-        origImg = imread(join(trainDir, 'OriginalImg'+trainImg+'.png'))
-        markImg = imread(join(trainDir, 'TrainingImg'+trainImg+'.png'))
+    # Height x Width x channel
+    origImg = imread(join(trainDir, 'OriginalImg'+trainImg+'.png'))
+    markImg = imread(join(trainDir, 'TrainingImg'+trainImg+'.png'))
 
-        # Normalization: all = R+G+B, R = R/all, G = G/all, B = B/all
-        # [[[1, 2, 3],                 [[[1, 4],                                     [[[1/6 , 4/15],                      [[[1/6 , 2/6 , 3/6 ],
-        #   [4, 5, 6]],                  [6, 8],                                       [6/15, 8/21],                        [4/15, 5/15, 6/15]],
-        #                                [5, 8]],                                      [5/18, 8/17]],
-        #
-        #
-        #  [[6, 5, 4],   rollaxis(x,2)  [[2, 5],   np.sum(x,2)   [[ 6,15],     R/S    [[2/6 , 5/15],     rollaxis(D,0,3)   [[6/15, 5/15, 4/15],
-        #   [8, 7, 6]],  ------------>   [5, 7],   ---------->    [15,21],   ------>   [5/15, 7/21],     -------------->    [8/21, 7/21, 6/21]],
-        #                      R         [6, 9]],       S         [18,17]]      D      [6/18, 9/17]],
-        #
-        #  [[5, 6, 7],                  [[3, 6],                                      [[3/6 , 6/15],                       [[5/18, 6/18, 7/18],
-        #   [8, 9, 0]]]                  [4, 6],                                       [4/15, 6/21],                        [8/17, 9/17, 0/17]]]
-        #                                [7, 0]]]                                      [7/18, 0/17]]]
-        ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
+    # Normalization: all = R+G+B, R = R/all, G = G/all, B = B/all
+    # [[[1, 2, 3],                 [[[1, 4],                                     [[[1/6 , 4/15],                      [[[1/6 , 2/6 , 3/6 ],
+    #   [4, 5, 6]],                  [6, 8],                                       [6/15, 8/21],                        [4/15, 5/15, 6/15]],
+    #                                [5, 8]],                                      [5/18, 8/17]],
+    #
+    #
+    #  [[6, 5, 4],   rollaxis(x,2)  [[2, 5],   np.sum(x,2)   [[ 6,15],     R/S    [[2/6 , 5/15],     rollaxis(D,0,3)   [[6/15, 5/15, 4/15],
+    #   [8, 7, 6]],  ------------>   [5, 7],   ---------->    [15,21],   ------>   [5/15, 7/21],     -------------->    [8/21, 7/21, 6/21]],
+    #                      R         [6, 9]],       S         [18,17]]      D      [6/18, 9/17]],
+    #
+    #  [[5, 6, 7],                  [[3, 6],                                      [[3/6 , 6/15],                       [[5/18, 6/18, 7/18],
+    #   [8, 9, 0]]]                  [4, 6],                                       [4/15, 6/21],                        [8/17, 9/17, 0/17]]]
+    #                                [7, 0]]]                                      [7/18, 0/17]]]
+    ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
 
-        # Get marked points from original image
-        # np.equal(markImg, (255, 0, 0) --> X*Y*3
-        # Matrix of X rows, each row have Y rows with 3 columns of booleans
-        # np.all(np.equal..., 2) --> X*Y
-        # Matrix of X rows with Y columns, True if pixel has red mark
-        # np.where(np.all...) --> X*Y
-        # Matrix of indices with red marked pixels
+    # Get marked points from original image
+    # np.equal(markImg, (255, 0, 0) --> X*Y*3
+    # Matrix of X rows, each row have Y rows with 3 columns of booleans
+    # np.all(np.equal..., 2) --> X*Y
+    # Matrix of X rows with Y columns, True if pixel has red mark
+    # np.where(np.all...) --> X*Y
+    # Matrix of indices with red marked pixels
 
-        data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
-        data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
-        data_blueN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 0, 255)), 2))]
+    data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
+    data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
+    data_blueN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 0, 255)), 2))]
 
-        dataN = np.concatenate([data_redN, data_greenN, data_blueN])
+    dataN = np.concatenate([data_redN, data_greenN, data_blueN])
 
-        targetN = np.concatenate([np.zeros(len(data_redN[:]), dtype=int),
-                                  np.ones(len(data_greenN[:]), dtype=int),
-                                  np.full(len(data_blueN[:]), 2, dtype=int)])
+    targetN = np.concatenate([np.zeros(len(data_redN[:]), dtype=int),
+                              np.ones(len(data_greenN[:]), dtype=int),
+                              np.full(len(data_blueN[:]), 2, dtype=int)])
 
-        # fig = plt.figure(figsize=(8, 8))
-        # ax = fig.add_subplot(111, projection='3d')
-        # plt.rcParams['legend.fontsize'] = 10
+    # fig = plt.figure(figsize=(8, 8))
+    # ax = fig.add_subplot(111, projection='3d')
+    # plt.rcParams['legend.fontsize'] = 10
 
-        # data = [data_redN, data_greenN, data_blueN]
-        # colors_markers = ('red', 'green', 'blue')
-        # for pos in range(3):
-        #     ax.plot(data[pos][:, 0], data[pos][:, 1], data[pos][:, 2], '*',
-        #             markersize=5, color=colors_markers[pos], alpha=0.5, label=colors_markers[pos])
+    # data = [data_redN, data_greenN, data_blueN]
+    # colors_markers = ('red', 'green', 'blue')
+    # for pos in range(3):
+    #     ax.plot(data[pos][:, 0], data[pos][:, 1], data[pos][:, 2], '*',
+    #             markersize=5, color=colors_markers[pos], alpha=0.5, label=colors_markers[pos])
 
-        # plt.legend(loc='upper left')
-        # ax.set_xlim(0, 1)
-        # ax.set_ylim(0, 1)
-        # ax.set_zlim(0, 1)
-        # plt.show()
-    else:
-        # Train the system with +20 images
-        dataN, targetN = training_multiple_images()
+    # plt.legend(loc='upper left')
+    # ax.set_xlim(0, 1)
+    # ax.set_ylim(0, 1)
+    # ax.set_zlim(0, 1)
+    # plt.show()
 
     clfN = NearestCentroid()
     clfN.fit(dataN, targetN)
@@ -148,13 +150,13 @@ def segmentation(clfN, args):
 
     if args.genVideo:
         if args.genVideo == 'segm':
-            check_dir(segmDir)
+            make_dir(segmDir)
         elif args.genVideo == 'norm':
-            check_dir(normDir)
+            make_dir(normDir)
         elif args.genVideo == 'analy':
-            check_dir(analyDir)
+            make_dir(analyDir)
         elif args.genVideo == 'chull':
-            check_dir(chullDir)
+            make_dir(chullDir)
 
     pause = False
     while(capture.isOpened()):
@@ -324,7 +326,7 @@ def segmentation(clfN, args):
 
 
 def gen_video(name, procedure):
-    check_dir(vidDir)
+    make_dir(vidDir)
 
     auxDir = None
 
@@ -367,46 +369,7 @@ def natural_sort(images_list):
     return sorted(images_list, key=alphanum_key)
 
 
-def training_multiple_images():
-    train = ['240', '504', '576', '600', '1272',
-             '1488', '1512', '1536', '1776',
-             '1944', '2160', '2304', '2784']
-
-    origImg = imread(join(trainDir, 'OriginalImg'+train[0]+'.png'))
-    markImg = imread(join(trainDir, 'TrainingImg'+train[0]+'.png'))
-    ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
-
-    data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
-    data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
-    data_blueN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 0, 255)), 2))]
-
-    dataN = np.concatenate([data_redN, data_greenN, data_blueN])
-
-    targetN = np.concatenate([np.zeros(len(data_redN[:]), dtype=int),
-                              np.ones(len(data_greenN[:]), dtype=int),
-                              np.full(len(data_blueN[:]), 2, dtype=int)])
-
-    for elem in train[1:]:
-        origImg = imread(join(trainDir, 'OriginalImg'+elem+'.png'))
-        markImg = imread(join(trainDir, 'TrainingImg'+elem+'.png'))
-
-        ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
-
-        data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
-        data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
-        data_blueN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 0, 255)), 2))]
-
-        dataN = np.concatenate([dataN, data_redN, data_greenN, data_blueN])
-
-        targetN = np.concatenate([targetN,
-                                  np.zeros(len(data_redN[:]), dtype=int),
-                                  np.ones(len(data_greenN[:]), dtype=int),
-                                  np.full(len(data_blueN[:]), 2, dtype=int)])
-
-    return dataN, targetN
-
-
-def check_dir(dirName):
+def make_dir(dirName):
     try:
         mkdir(dirName)
     except OSError:
@@ -444,10 +407,6 @@ if __name__ == "__main__":
     parser.add_argument('-ti', '--trainImg',
                         help='Select a different trainingImg.')
 
-    parser.add_argument('-mt', '--multiTrain',
-                        action='store_true',
-                        help='Train the system with multiple images.')
-
     parser.add_argument('-o', '--output',
                         nargs='?', const='video_output',
                         default='video_output',
@@ -470,4 +429,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    print args.video
+    sys.exit()
     main(parser, args)
