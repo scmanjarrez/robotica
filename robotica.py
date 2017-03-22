@@ -187,7 +187,50 @@ def segmentation(clfN, args):
             # Image with the arrow/mark in white
             arrow_mark_px = (reshape_back == 0).astype(np.uint8)[90:, :]*255
 
-            # asd = arrow_mark_px.copy()
+            # //Testing
+            # corners = arrow_mark_px.copy()
+            # corners = np.float32(corners)
+            # canny_cp = arrow_mark_px.copy()
+
+            # canny = cv2.Canny(canny_cp, 100, 200)
+            # lines_cp = canny.copy()
+
+            # lines = cv2.HoughLinesP(canny, 1, np.pi/180, 10, np.array([]), 30, 5)
+            # lines = cv2.HoughLines(canny, 1, np.pi/360, 10)
+            # if lines is not None:
+            #     # print lines.shape[0]
+            #     # for i in range(lines.shape[0]):
+            #     #     print lines[i]
+            #     #     cv2.line(lines_cp, (lines[i][0][0], lines[i][0][1]), (lines[i][0][2], lines[i][0][3]), (0, 0, 255), 3)
+            #     for i in  range(0,lines.shape[0]):
+            #         rho,thetha = lines[i,0]
+            #         a = np.cos(thetha)
+            #         b = np.sin(thetha)
+            #         if a < 0:
+            #             print "izquierda"
+            #         else:
+            #             print "dcha"
+            #         x0 = a*rho
+            #         y0 = b*rho
+            #         x1 = int(x0 + 1000*(-b))
+            #         y1 = int(y0 + 1000*(a))
+            #         x2 = int(x0 - 1000*(-b))
+            #         y2 = int(y0 - 1000*(a))
+            #         cv2.line(lines_cp,(x1,y1),(x2,y2),(0,0,255),1)
+            # cv2.imshow("lines", lines_cp)
+            # test = arrow_mark_px.copy()
+            # test = cv2.cvtColor(test, cv2.COLOR_GRAY2BGR)
+
+            # //Testing
+            # crns = cv2.goodFeaturesToTrack(corners, 4, 0.01, 15)
+            # if crns is not None:
+            #     crns = np.int0(crns)
+            #     for corner in crns:
+            #         x, y = corner.ravel()
+            #         cv2.circle(test, (x, y), 3, (255, 0, 0), -1)
+
+            # cv2.imshow('Corner', test)
+
             paleta = np.array([[255, 0, 0], [0, 0, 0], [0, 0, 255]], dtype=np.uint8)
 
             # Automatic reshape is being done here, from 2-dimensional to 3-dimensional array [[1, 1, ...]] -> [[[0,0,0], ....]]
@@ -203,7 +246,16 @@ def segmentation(clfN, args):
             # Find contours of arror/mark
             cnts_am, hier_am = cv2.findContours(arrow_mark_px, cv2.RETR_LIST,
                                                 cv2.CHAIN_APPROX_NONE)
+            # //Testing
+            # if cnts_am:
+            #     peri = cv2.arcLength(cnts_am[0], True)
+            #     approx = cv2.approxPolyDP(cnts_am[0], 0.02 * peri, True)
 
+            #     for el in approx:
+            #         print el
+            #         cv2.circle(test, (el[0][0], el[0][1]), 2, (0, 255, 0), -1)
+
+            # cv2.imshow("test", test)
             # Removes small contours, i.e: small squares
             newcnts_l = [cnt for cnt in cnts_l if len(cnt) > 100]
             newcnts_am = [cnt for cnt in cnts_am if len(cnt) > 50]
@@ -386,13 +438,13 @@ def main(parser, args):
     if args.trainImg:
         trainImg = args.trainImg
 
-    # # Mark lots of images
-    # if args.mark:
-    #     marking()
-    # # Select the ones you want to train
-    # elif args.seg:
-    #     clfN = training(args)
-    #     segmentation(clfN, args)
+    # Mark lots of images
+    if args.mark:
+        marking()
+    # Select the ones you want to train
+    elif args.seg:
+        clfN = training(args)
+        segmentation(clfN, args)
 
     if args.genVideo:
         gen_video(args.output, args.genVideo)
@@ -429,6 +481,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    print args.video
-    sys.exit()
     main(parser, args)
