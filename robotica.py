@@ -275,6 +275,7 @@ def segmentation(clfN, args):
                         listCont_am.append(newcnts_am[pos])
 
             # obj = None
+            mark = True
             if not listConvDefs_l:
                 cv2.putText(analy, "Straight line", (0, 140),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
@@ -297,10 +298,12 @@ def segmentation(clfN, args):
                     elif el.shape[0] == 2 or el.shape[0] == 3:
                         cv2.putText(analy, "2-way crossing", (0, 140),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        mark = False
                         # obj = "arrow"
                     elif el.shape[0] == 4:
                         cv2.putText(analy, "3-way crossing", (0, 140),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        mark = False
                         # obj = "arrow"
 
                     if args.genVideo and args.genVideo == 'chull':
@@ -325,67 +328,68 @@ def segmentation(clfN, args):
 
             # print state_automata.state
             # if newcnts_am and state_automata.getState(obj):
-            for c in newcnts_am:
-                ellipse = cv2.fitEllipse(c)
-                center, axis, angle = ellipse
+            if not mark:
+                for c in newcnts_am:
+                    ellipse = cv2.fitEllipse(c)
+                    center, axis, angle = ellipse
 
-                # Axis angles, major, minor
-                maj_ang = np.deg2rad(angle)
-                min_ang = maj_ang + np.pi/2
+                    # Axis angles, major, minor
+                    maj_ang = np.deg2rad(angle)
+                    min_ang = maj_ang + np.pi/2
 
-                # Axis lenghts
-                major_axis = axis[1]
-                minor_axis = axis[0]
+                    # Axis lenghts
+                    major_axis = axis[1]
+                    minor_axis = axis[0]
 
-                # Lines of axis, first line and his complementary
-                lineX1 = int(center[0]) + int(np.sin(maj_ang)*(major_axis/2))
-                lineY1 = int(center[1]) - int(np.cos(maj_ang)*(major_axis/2))
-                lineX2 = int(center[0]) - int(np.sin(maj_ang)*(major_axis/2))
-                lineY2 = int(center[1]) + int(np.cos(maj_ang)*(major_axis/2))
+                    # Lines of axis, first line and his complementary
+                    lineX1 = int(center[0]) + int(np.sin(maj_ang)*(major_axis/2))
+                    lineY1 = int(center[1]) - int(np.cos(maj_ang)*(major_axis/2))
+                    lineX2 = int(center[0]) - int(np.sin(maj_ang)*(major_axis/2))
+                    lineY2 = int(center[1]) + int(np.cos(maj_ang)*(major_axis/2))
 
-                if args.genVideo and args.genVideo == 'chull':
-                    linex1 = int(center[0]) + int(np.sin(min_ang)*(minor_axis/2))
-                    liney1 = int(center[1]) - int(np.cos(min_ang)*(minor_axis/2))
-                    cv2.line(analy, (int(center[0]), int(center[1])), (lineX1, lineY1), (0, 0, 255), 2)
-                    cv2.line(analy, (int(center[0]), int(center[1])), (linex1, liney1), (255, 0, 0), 2)
-                    cv2.circle(analy, (int(center[0]), int(center[1])), 3, (0, 0, 0), -1)
-                    cv2.ellipse(analy, ellipse, (0, 255, 0), 2)
-                    cv2.putText(analy, "Ellipse angle: "+str(angle), (0, 110),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-
-                # Get coordinates of arrow pixels
-                arrow = []
-                for y, row in enumerate(arrow_mark_px_aux):
-                    for x, col in enumerate(row):
-                        if col == 255:
-                            arrow.append([x, y])
-
-                if 45 <= angle <= 135:  # Arrow kind of horizontal -> cut in vertical
-                    # Divide arrow in two lists depending on X coordinate of the center
-                    left = [1 for px in arrow if px[0] < center[0]]
-                    right = [1 for px in arrow if px[0] > center[0]]
-                    if len(right) >= len(left):
-                        peak = (lineX1, lineY1)  # Arrow peak is the point in major axis 1
-                        cv2.putText(analy, "Right horizontal", (0, 120),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                    else:
-                        peak = (lineX2, lineY2)  # Arrow peak is the point in major axis 2
-                        cv2.putText(analy, "Left horizontal", (0, 120),
+                    if args.genVideo and args.genVideo == 'chull':
+                        linex1 = int(center[0]) + int(np.sin(min_ang)*(minor_axis/2))
+                        liney1 = int(center[1]) - int(np.cos(min_ang)*(minor_axis/2))
+                        cv2.line(analy, (int(center[0]), int(center[1])), (lineX1, lineY1), (0, 0, 255), 2)
+                        cv2.line(analy, (int(center[0]), int(center[1])), (linex1, liney1), (255, 0, 0), 2)
+                        cv2.circle(analy, (int(center[0]), int(center[1])), 3, (0, 0, 0), -1)
+                        cv2.ellipse(analy, ellipse, (0, 255, 0), 2)
+                        cv2.putText(analy, "Ellipse angle: "+str(angle), (0, 110),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
-                else:  # Arrow kind of vertical -> cut in horizontal
-                    # Divide arrow in two lists depending on Y coordinate of the center
-                    up = [1 for px in arrow if px[1] < center[1]]
-                    down = [1 for px in arrow if px[1] > center[1]]
-                    if (len(up) >= len(down) and angle < 45) or (len(down) >= len(up) and angle > 135):
-                        peak = (lineX1, lineY1)  # Arrow peak is the point in major axis 1
-                        cv2.putText(analy, "Right vertical", (0, 120),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                    else:
-                        peak = (lineX2, lineY2)  # Arrow peak is the point in major axis 2
-                        cv2.putText(analy, "Left vertical", (0, 120),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                cv2.circle(analy, (int(peak[0]), int(peak[1])), 3, (255, 255, 255), -1)
+                    # Get coordinates of arrow pixels
+                    arrow = []
+                    for y, row in enumerate(arrow_mark_px_aux):
+                        for x, col in enumerate(row):
+                            if col == 255:
+                                arrow.append([x, y])
+
+                    if 45 <= angle <= 135:  # Arrow kind of horizontal -> cut in vertical
+                        # Divide arrow in two lists depending on X coordinate of the center
+                        left = [1 for px in arrow if px[0] < center[0]]
+                        right = [1 for px in arrow if px[0] > center[0]]
+                        if len(right) >= len(left):
+                            peak = (lineX1, lineY1)  # Arrow peak is the point in major axis 1
+                            cv2.putText(analy, "Right horizontal", (0, 120),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        else:
+                            peak = (lineX2, lineY2)  # Arrow peak is the point in major axis 2
+                            cv2.putText(analy, "Left horizontal", (0, 120),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+
+                    else:  # Arrow kind of vertical -> cut in horizontal
+                        # Divide arrow in two lists depending on Y coordinate of the center
+                        up = [1 for px in arrow if px[1] < center[1]]
+                        down = [1 for px in arrow if px[1] > center[1]]
+                        if (len(up) >= len(down) and angle < 45) or (len(down) >= len(up) and angle > 135):
+                            peak = (lineX1, lineY1)  # Arrow peak is the point in major axis 1
+                            cv2.putText(analy, "Right vertical", (0, 120),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        else:
+                            peak = (lineX2, lineY2)  # Arrow peak is the point in major axis 2
+                            cv2.putText(analy, "Left vertical", (0, 120),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    cv2.circle(analy, (int(peak[0]), int(peak[1])), 3, (255, 255, 255), -1)
 
             cv2.drawContours(analy, newcnts_l, -1, (255, 0, 0), 1)
             cv2.drawContours(analy, newcnts_am, -1, (0, 0, 255), 1)
