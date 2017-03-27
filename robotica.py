@@ -10,7 +10,7 @@ from sklearn.neighbors.nearest_centroid import NearestCentroid
 
 import cv2
 import select_pixels as sel
-
+import time
 
 # from matplotlib import pyplot as plt
 # from mpl_toolkits.mplot3d import Axes3D
@@ -25,6 +25,35 @@ normDir = 'NormFrames'
 analyDir = 'AnalyFrames'
 chullDir = 'ChullFrames'
 vidDir = 'OutputVideos'
+
+
+# class StateAutomata:
+#     # mark, ~mark, ~arrow, arrow
+#     # States are 00, 01, 10, 11
+#     # On success increase state
+#     # On failure decrease state
+#     def __init__(self):
+#         self.states = ["-3", "-2", "-1", "0", "+1", "+2", "+3"]
+#         self.state = 3
+
+#     def state(self):
+#         return self.state
+
+#     def __decrease(self):
+#         if self.state > 0:
+#             self.state -= 1
+#         return 0 if (self.state < 3) else 1
+
+#     def __increase(self):
+#         if self.state < 6:
+#             self.state += 1
+#         return 0 if (self.state < 3) else 1
+
+#     def getState(self, state):
+#         if state == "mark":
+#             return self.__decrease()
+#         elif state == "arrow":
+#             return self.__increase()
 
 
 def marking():
@@ -159,6 +188,7 @@ def segmentation(clfN, args):
             make_dir(chullDir)
 
     pause = False
+    # state_automata = StateAutomata()
     while(capture.isOpened()):
         if not pause:
             ret, frame = capture.read()
@@ -187,49 +217,8 @@ def segmentation(clfN, args):
             # Image with the arrow/mark in white
             arrow_mark_px = (reshape_back == 0).astype(np.uint8)[90:, :]*255
 
-            # //Testing
-            # corners = arrow_mark_px.copy()
-            # corners = np.float32(corners)
-            # canny_cp = arrow_mark_px.copy()
-
-            # canny = cv2.Canny(canny_cp, 100, 200)
-            # lines_cp = canny.copy()
-
-            # lines = cv2.HoughLinesP(canny, 1, np.pi/180, 10, np.array([]), 30, 5)
-            # lines = cv2.HoughLines(canny, 1, np.pi/360, 10)
-            # if lines is not None:
-            #     # print lines.shape[0]
-            #     # for i in range(lines.shape[0]):
-            #     #     print lines[i]
-            #     #     cv2.line(lines_cp, (lines[i][0][0], lines[i][0][1]), (lines[i][0][2], lines[i][0][3]), (0, 0, 255), 3)
-            #     for i in  range(0,lines.shape[0]):
-            #         rho,thetha = lines[i,0]
-            #         a = np.cos(thetha)
-            #         b = np.sin(thetha)
-            #         if a < 0:
-            #             print "izquierda"
-            #         else:
-            #             print "dcha"
-            #         x0 = a*rho
-            #         y0 = b*rho
-            #         x1 = int(x0 + 1000*(-b))
-            #         y1 = int(y0 + 1000*(a))
-            #         x2 = int(x0 - 1000*(-b))
-            #         y2 = int(y0 - 1000*(a))
-            #         cv2.line(lines_cp,(x1,y1),(x2,y2),(0,0,255),1)
-            # cv2.imshow("lines", lines_cp)
-            # test = arrow_mark_px.copy()
-            # test = cv2.cvtColor(test, cv2.COLOR_GRAY2BGR)
-
-            # //Testing
-            # crns = cv2.goodFeaturesToTrack(corners, 4, 0.01, 15)
-            # if crns is not None:
-            #     crns = np.int0(crns)
-            #     for corner in crns:
-            #         x, y = corner.ravel()
-            #         cv2.circle(test, (x, y), 3, (255, 0, 0), -1)
-
-            # cv2.imshow('Corner', test)
+            # FindContours is destructive, so we copy this image
+            arrow_mark_px_aux = arrow_mark_px.copy()
 
             paleta = np.array([[255, 0, 0], [0, 0, 0], [0, 0, 255]], dtype=np.uint8)
 
@@ -246,16 +235,7 @@ def segmentation(clfN, args):
             # Find contours of arror/mark
             cnts_am, hier_am = cv2.findContours(arrow_mark_px, cv2.RETR_LIST,
                                                 cv2.CHAIN_APPROX_NONE)
-            # //Testing
-            # if cnts_am:
-            #     peri = cv2.arcLength(cnts_am[0], True)
-            #     approx = cv2.approxPolyDP(cnts_am[0], 0.02 * peri, True)
 
-            #     for el in approx:
-            #         print el
-            #         cv2.circle(test, (el[0][0], el[0][1]), 2, (0, 255, 0), -1)
-
-            # cv2.imshow("test", test)
             # Removes small contours, i.e: small squares
             newcnts_l = [cnt for cnt in cnts_l if len(cnt) > 100]
             newcnts_am = [cnt for cnt in cnts_am if len(cnt) > 50]
@@ -294,9 +274,11 @@ def segmentation(clfN, args):
                         listConvDefs_am.append(el[aux])
                         listCont_am.append(newcnts_am[pos])
 
+            # obj = None
             if not listConvDefs_l:
-                cv2.putText(analy, "Linea recta", (0, 140),
+                cv2.putText(analy, "Straight line", (0, 140),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                # obj = "mark"
 
             for pos, el in enumerate(listConvDefs_l):
                 for i in range(el.shape[0]):
@@ -305,21 +287,24 @@ def segmentation(clfN, args):
                         [vx, vy, x, y] = cv2.fitLine(listCont_l[pos], cv2.cv.CV_DIST_L2, 0, 0.01, 0.01)
                         slope = vy/vx
                         if slope > 0:
-                            cv2.putText(analy, "Curva a izquierda", (0, 140),
+                            cv2.putText(analy, "Left curve", (0, 140),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                         else:
-                            cv2.putText(analy, "Curva a derecha", (0, 140),
+                            cv2.putText(analy, "Right curve", (0, 140),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        # obj = "mark"
 
                     elif el.shape[0] == 2 or el.shape[0] == 3:
-                        cv2.putText(analy, "Cruce 2 salidas", (0, 140),
+                        cv2.putText(analy, "2-way crossing", (0, 140),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        # obj = "arrow"
                     elif el.shape[0] == 4:
-                        cv2.putText(analy, "Cruce 3 salidas", (0, 140),
+                        cv2.putText(analy, "3-way crossing", (0, 140),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        # obj = "arrow"
 
                     if args.genVideo and args.genVideo == 'chull':
-                        # Paint convex hull and hole
+                        # Draw convex hull and hole
                         s, e, f, d = el[i]
                         start = tuple(listCont_l[pos][s][0])
                         end = tuple(listCont_l[pos][e][0])
@@ -330,13 +315,77 @@ def segmentation(clfN, args):
             if args.genVideo and args.genVideo == 'chull':
                 for pos, el in enumerate(listConvDefs_am):
                     for i in range(el.shape[0]):
-                        # Paint convex hull and hole
+                        # Draw convex hull and hole
                         s, e, f, d = el[i]
                         start = tuple(listCont_am[pos][s][0])
                         end = tuple(listCont_am[pos][e][0])
                         far = tuple(listCont_am[pos][f][0])
                         cv2.line(analy, start, end, [0, 255, 0], 2)
                         cv2.circle(analy, far, 3, [0, 0, 255], -1)
+
+            # print state_automata.state
+            # if newcnts_am and state_automata.getState(obj):
+            for c in newcnts_am:
+                ellipse = cv2.fitEllipse(c)
+                center, axis, angle = ellipse
+
+                # Axis angles, major, minor
+                maj_ang = np.deg2rad(angle)
+                min_ang = maj_ang + np.pi/2
+
+                # Axis lenghts
+                major_axis = axis[1]
+                minor_axis = axis[0]
+
+                # Lines of axis, first line and his complementary
+                lineX1 = int(center[0]) + int(np.sin(maj_ang)*(major_axis/2))
+                lineY1 = int(center[1]) - int(np.cos(maj_ang)*(major_axis/2))
+                lineX2 = int(center[0]) - int(np.sin(maj_ang)*(major_axis/2))
+                lineY2 = int(center[1]) + int(np.cos(maj_ang)*(major_axis/2))
+
+                if args.genVideo and args.genVideo == 'chull':
+                    linex1 = int(center[0]) + int(np.sin(min_ang)*(minor_axis/2))
+                    liney1 = int(center[1]) - int(np.cos(min_ang)*(minor_axis/2))
+                    cv2.line(analy, (int(center[0]), int(center[1])), (lineX1, lineY1), (0, 0, 255), 2)
+                    cv2.line(analy, (int(center[0]), int(center[1])), (linex1, liney1), (255, 0, 0), 2)
+                    cv2.circle(analy, (int(center[0]), int(center[1])), 3, (0, 0, 0), -1)
+                    cv2.ellipse(analy, ellipse, (0, 255, 0), 2)
+                    cv2.putText(analy, "Ellipse angle: "+str(angle), (0, 110),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+
+                # Get coordinates of arrow pixels
+                arrow = []
+                for y, row in enumerate(arrow_mark_px_aux):
+                    for x, col in enumerate(row):
+                        if col == 255:
+                            arrow.append([x, y])
+
+                if 45 <= angle <= 135:  # Arrow kind of horizontal -> cut in vertical
+                    # Divide arrow in two lists depending on X coordinate of the center
+                    left = [1 for px in arrow if px[0] < center[0]]
+                    right = [1 for px in arrow if px[0] > center[0]]
+                    if len(right) >= len(left):
+                        peak = (lineX1, lineY1)  # Arrow peak is the point in major axis 1
+                        cv2.putText(analy, "Right horizontal", (0, 120),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    else:
+                        peak = (lineX2, lineY2)  # Arrow peak is the point in major axis 2
+                        cv2.putText(analy, "Left horizontal", (0, 120),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+
+                else:  # Arrow kind of vertical -> cut in horizontal
+                    # Divide arrow in two lists depending on Y coordinate of the center
+                    up = [1 for px in arrow if px[1] < center[1]]
+                    down = [1 for px in arrow if px[1] > center[1]]
+                    if (len(up) >= len(down) and angle < 45) or (len(down) >= len(up) and angle > 135):
+                        peak = (lineX1, lineY1)  # Arrow peak is the point in major axis 1
+                        cv2.putText(analy, "Right vertical", (0, 120),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    else:
+                        peak = (lineX2, lineY2)  # Arrow peak is the point in major axis 2
+                        cv2.putText(analy, "Left vertical", (0, 120),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                cv2.circle(analy, (int(peak[0]), int(peak[1])), 3, (255, 255, 255), -1)
 
             cv2.drawContours(analy, newcnts_l, -1, (255, 0, 0), 1)
             cv2.drawContours(analy, newcnts_am, -1, (0, 0, 255), 1)
@@ -460,7 +509,6 @@ if __name__ == "__main__":
                         help='Select a different trainingImg.')
 
     parser.add_argument('-o', '--output',
-                        nargs='?', const='video_output',
                         default='video_output',
                         help='Choose the output video name.')
 
