@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# -*- coding: utf-8 -*-
 import argparse
 import numpy as np
 import re
@@ -7,10 +8,13 @@ from os import listdir, mkdir
 from os.path import isfile, join
 from scipy.misc import imread, imsave
 from sklearn.neighbors.nearest_centroid import NearestCentroid
+from sklearn.metrics.pairwise import euclidean_distances as ed
+
 
 import cv2
 import select_pixels as sel
 import time
+
 
 # from matplotlib import pyplot as plt
 # from mpl_toolkits.mplot3d import Axes3D
@@ -26,6 +30,7 @@ analyDir = 'AnalyFrames'
 chullDir = 'ChullFrames'
 vidDir = 'OutputVideos'
 
+font = cv2.FONT_HERSHEY_SIMPLEX
 
 # class StateAutomata:
 #     # mark, ~mark, ~arrow, arrow
@@ -188,6 +193,8 @@ def segmentation(clfN, args):
             make_dir(chullDir)
 
     pause = False
+    # ultEnt = (0, 0)
+    # i = 0
     # state_automata = StateAutomata()
     while(capture.isOpened()):
         if not pause:
@@ -213,6 +220,9 @@ def segmentation(clfN, args):
 
             # Image with the line in white
             line_px = (reshape_back == 2).astype(np.uint8)[90:, :]*255
+
+            # FindContours is destructive, so we copy this image
+            # line_px_aux = line_px.copy()
 
             # Image with the arrow/mark in white
             arrow_mark_px = (reshape_back == 0).astype(np.uint8)[90:, :]*255
@@ -276,9 +286,10 @@ def segmentation(clfN, args):
 
             # obj = None
             mark = True
+
             if not listConvDefs_l:
                 cv2.putText(analy, "Straight line", (0, 140),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                            font, 0.5, (0, 0, 0), 1)
                 # obj = "mark"
 
             for pos, el in enumerate(listConvDefs_l):
@@ -289,20 +300,20 @@ def segmentation(clfN, args):
                         slope = vy/vx
                         if slope > 0:
                             cv2.putText(analy, "Left curve", (0, 140),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                                        font, 0.5, (0, 0, 0), 1)
                         else:
                             cv2.putText(analy, "Right curve", (0, 140),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                                        font, 0.5, (0, 0, 0), 1)
                         # obj = "mark"
 
                     elif el.shape[0] == 2 or el.shape[0] == 3:
                         cv2.putText(analy, "2-way crossing", (0, 140),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                                    font, 0.5, (0, 0, 0), 1)
                         mark = False
                         # obj = "arrow"
                     elif el.shape[0] == 4:
                         cv2.putText(analy, "3-way crossing", (0, 140),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                                    font, 0.5, (0, 0, 0), 1)
                         mark = False
                         # obj = "arrow"
 
@@ -363,33 +374,72 @@ def segmentation(clfN, args):
                         for x, col in enumerate(row):
                             if col == 255:
                                 arrow.append([x, y])
-
+                    angle360 = angle        # Initial angle in [0,180)
                     if 45 <= angle <= 135:  # Arrow kind of horizontal -> cut in vertical
                         # Divide arrow in two lists depending on X coordinate of the center
                         left = [1 for px in arrow if px[0] < center[0]]
                         right = [1 for px in arrow if px[0] > center[0]]
                         if len(right) >= len(left):
                             peak = (lineX1, lineY1)  # Arrow peak is the point in major axis 1
-                            cv2.putText(analy, "Right horizontal", (0, 120),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                         else:
                             peak = (lineX2, lineY2)  # Arrow peak is the point in major axis 2
-                            cv2.putText(analy, "Left horizontal", (0, 120),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-
+                            angle360 += 180          # Real angle in [0,360)
                     else:  # Arrow kind of vertical -> cut in horizontal
                         # Divide arrow in two lists depending on Y coordinate of the center
                         up = [1 for px in arrow if px[1] < center[1]]
                         down = [1 for px in arrow if px[1] > center[1]]
                         if (len(up) >= len(down) and angle < 45) or (len(down) >= len(up) and angle > 135):
                             peak = (lineX1, lineY1)  # Arrow peak is the point in major axis 1
-                            cv2.putText(analy, "Right vertical", (0, 120),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                         else:
                             peak = (lineX2, lineY2)  # Arrow peak is the point in major axis 2
-                            cv2.putText(analy, "Left vertical", (0, 120),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                    cv2.circle(analy, (int(peak[0]), int(peak[1])), 3, (255, 255, 255), -1)
+                            angle360 += 180
+
+                    angle360 = int(angle360)
+
+                    if angle360 >= 337.5 or angle360 < 22.5:
+                        cv2.putText(analy, "North (="+str(angle360)+"deg)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    elif angle360 < 67.5:
+                        cv2.putText(analy, "Northeast (="+str(angle360)+"deg)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    elif angle360 < 112.5:
+                        cv2.putText(analy, "East (="+str(angle360)+"deg)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    elif angle360 < 157.5:
+                        cv2.putText(analy, "Southeast (="+str(angle360)+"deg)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    elif angle360 < 202.5:
+                        cv2.putText(analy, "South (="+str(angle360)+"o)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    elif angle360 < 247.5:
+                        cv2.putText(analy, "Southwest (="+str(angle360)+"deg)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    elif angle360 < 292.5:
+                        cv2.putText(analy, "West (="+str(angle360)+"deg)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    elif angle360 < 337.5:
+                        cv2.putText(analy, "Northwest (="+str(angle360)+"deg)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+
+                    cv2.line(analy, (int(peak[0]), int(peak[1])), (int(center[0]), int(center[1])), (0, 0, 255), 2)
+                    cv2.circle(analy, (int(peak[0]), int(peak[1])), 3, (0, 255, 0), -1)
+
+            for cnt in newcnts_l:
+                topmost = tuple(cnt[cnt[:, :, 1].argmin()][0])
+                bottommost = tuple(cnt[cnt[:, :, 1].argmax()][0])
+                cv2.circle(analy, topmost, 3, (0, 0, 0), -1)
+                cv2.circle(analy, bottommost, 3, (0, 0, 0), -1)
+            # right_border = line_px_aux[:, :20].copy()
+            # cv2.imshow("leftb", right_border)
+            # left_border = line_px_aux[:, 300:].copy()
+            # cv2.imshow("rightb", left_border)
+            # top_border = line_px_aux[:20, :].copy()
+            # cv2.imshow("topb", top_border)
+            # bot_border = line_px_aux[130:, :].copy()
+            # cv2.imshow("botb", bot_border)
+
+            # l_cont, h = cv2.findContours(left_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            # r_cont, h = cv2.findContours(right_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            # t_cont, h = cv2.findContours(top_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            # b_cont, h = cv2.findContours(bot_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            # line_px_aux = cv2.cvtColor(line_px_aux, cv2.COLOR_GRAY2BGR)
+            # cv2.drawContours(line_px_aux, l_cont, -1, (255, 0, 0), 1)
+            # cv2.drawContours(line_px_aux, r_cont, -1, (0, 255, 0), 1)
+            # cv2.drawContours(line_px_aux, t_cont, -1, (255, 0, 255), 1)
+            # cv2.drawContours(line_px_aux, b_cont, -1, (0, 0, 255), 1)
+            # cv2.imshow("Borders", line_px_aux)
 
             cv2.drawContours(analy, newcnts_l, -1, (255, 0, 0), 1)
             cv2.drawContours(analy, newcnts_am, -1, (0, 0, 255), 1)
