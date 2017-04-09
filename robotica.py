@@ -413,33 +413,48 @@ def segmentation(clfN, args):
                     cv2.line(analy, (int(peak[0]), int(peak[1])), (int(center[0]), int(center[1])), (0, 0, 255), 2)
                     cv2.circle(analy, (int(peak[0]), int(peak[1])), 3, (0, 255, 0), -1)
 
-            # for cnt in newcnts_l:
-            #     topmost = tuple(cnt[cnt[:, :, 1].argmin()][0])
-            #     bottommost = tuple(cnt[cnt[:, :, 1].argmax()][0])
-            #     cv2.circle(analy, topmost, 3, (0, 0, 0), -1)
-            #     cv2.circle(analy, bottommost, 3, (0, 0, 0), -1)
-            lb = line_px_aux[:, :20].copy()
-            rb = line_px_aux[:, 300:].copy()
+            lb = line_px_aux[20:130, :20].copy()
+            rb = line_px_aux[20:130, 300:].copy()
             tb = line_px_aux[:20, :].copy()
             bb = line_px_aux[130:, :].copy()
 
             lc, h = cv2.findContours(lb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            lc = [cnt for cnt in lc if cv2.contourArea(cnt) > 150]
+            if lc:
+                for l in lc:
+                    l[:, :, 1] = l[:, :, 1] + 20
+                    mlc = np.mean(l[:, :, :], axis=0, dtype=np.int32)
+                    cv2.circle(analy, (mlc[0, 0], mlc[0, 1]), 3, (0, 255, 0), -1)
+
             rc, h = cv2.findContours(rb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            rc = [cnt for cnt in rc if cv2.contourArea(cnt) > 150]
             if rc:
                 for r in rc:
                     r[:, :, 0] = r[:, :, 0] + 300
+                    r[:, :, 1] = r[:, :, 1] + 20
+                    mrc = np.mean(r[:, :, :], axis=0, dtype=np.int32)
+                    cv2.circle(analy, (mrc[0, 0], mrc[0, 1]), 3, (0, 255, 0), -1)
+
             tc, h = cv2.findContours(tb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            tc = [cnt for cnt in tc if cv2.contourArea(cnt) > 150]
+            if tc:
+                for t in tc:
+                    mtc = np.mean(t[:, :, :], axis=0, dtype=np.int32)
+                    cv2.circle(analy, (mtc[0, 0], mtc[0, 1]), 3, (0, 255, 0), -1)
+
             bc, h = cv2.findContours(bb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            bc = [cnt for cnt in bc if cv2.contourArea(cnt) > 150]
             if bc:
                 for b in bc:
                     b[:, :, 1] = b[:, :, 1] + 130
+                    mbc = np.mean(b[:, :, :], axis=0, dtype=np.int32)
+                    cv2.circle(analy, (mbc[0, 0], mbc[0, 1]), 3, (255, 0, 255), -1)
 
-            line_px_aux = cv2.cvtColor(line_px_aux, cv2.COLOR_GRAY2BGR)
-            cv2.drawContours(line_px_aux, lc, -1, (255, 0, 0), 2)
-            cv2.drawContours(line_px_aux, rc, -1, (0, 255, 0), 2)
-            cv2.drawContours(line_px_aux, tc, -1, (255, 0, 255), 2)
-            cv2.drawContours(line_px_aux, bc, -1, (0, 0, 255), 2)
-            cv2.imshow("Borders", line_px_aux)
+            if args.genVideo and args.genVideo == 'chull':
+                cv2.drawContours(analy, lc, -1, (255, 0, 0), 2)
+                cv2.drawContours(analy, rc, -1, (0, 255, 0), 2)
+                cv2.drawContours(analy, tc, -1, (255, 0, 255), 2)
+                cv2.drawContours(analy, bc, -1, (0, 0, 255), 2)
 
             cv2.drawContours(analy, newcnts_l, -1, (255, 0, 0), 1)
             cv2.drawContours(analy, newcnts_am, -1, (0, 0, 255), 1)
