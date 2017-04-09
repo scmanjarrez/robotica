@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 import argparse
 import numpy as np
 import re
@@ -413,40 +412,44 @@ def segmentation(clfN, args):
                     cv2.line(analy, (int(peak[0]), int(peak[1])), (int(center[0]), int(center[1])), (0, 0, 255), 2)
                     cv2.circle(analy, (int(peak[0]), int(peak[1])), 3, (0, 255, 0), -1)
 
-            lb = line_px_aux[20:130, :20].copy()
-            rb = line_px_aux[20:130, 300:].copy()
-            tb = line_px_aux[:20, :].copy()
-            bb = line_px_aux[130:, :].copy()
+            lb = line_px_aux[:, :10].copy()
+            rb = line_px_aux[:, 310:].copy()
+            tb = line_px_aux[:10, 10:310].copy()
+            bb = line_px_aux[140:, 10:310].copy()
 
             lc, h = cv2.findContours(lb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            lc = [cnt for cnt in lc if cv2.contourArea(cnt) > 150]
+            print "left: ", [cv2.contourArea(cnt) for cnt in lc]
+            lc = [cnt for cnt in lc if cv2.contourArea(cnt) > 75]
             if lc:
                 for l in lc:
-                    l[:, :, 1] = l[:, :, 1] + 20
                     mlc = np.mean(l[:, :, :], axis=0, dtype=np.int32)
                     cv2.circle(analy, (mlc[0, 0], mlc[0, 1]), 3, (0, 255, 0), -1)
 
             rc, h = cv2.findContours(rb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            rc = [cnt for cnt in rc if cv2.contourArea(cnt) > 150]
+            print "right: ", [cv2.contourArea(cnt) for cnt in rc]
+            rc = [cnt for cnt in rc if cv2.contourArea(cnt) > 75]
             if rc:
                 for r in rc:
-                    r[:, :, 0] = r[:, :, 0] + 300
-                    r[:, :, 1] = r[:, :, 1] + 20
+                    r[:, :, 0] = r[:, :, 0] + 310
                     mrc = np.mean(r[:, :, :], axis=0, dtype=np.int32)
                     cv2.circle(analy, (mrc[0, 0], mrc[0, 1]), 3, (0, 255, 0), -1)
 
             tc, h = cv2.findContours(tb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            tc = [cnt for cnt in tc if cv2.contourArea(cnt) > 150]
+            print "top: ", [cv2.contourArea(cnt) for cnt in tc]
+            tc = [cnt for cnt in tc if cv2.contourArea(cnt) > 75]
             if tc:
                 for t in tc:
+                    t[:, :, 0] = t[:, :, 0] + 10
                     mtc = np.mean(t[:, :, :], axis=0, dtype=np.int32)
                     cv2.circle(analy, (mtc[0, 0], mtc[0, 1]), 3, (0, 255, 0), -1)
 
             bc, h = cv2.findContours(bb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            bc = [cnt for cnt in bc if cv2.contourArea(cnt) > 150]
+            print "bot: ", [cv2.contourArea(cnt) for cnt in bc]
+            bc = [cnt for cnt in bc if cv2.contourArea(cnt) > 75]
             if bc:
                 for b in bc:
-                    b[:, :, 1] = b[:, :, 1] + 130
+                    b[:, :, 0] = b[:, :, 0] + 10
+                    b[:, :, 1] = b[:, :, 1] + 140
                     mbc = np.mean(b[:, :, :], axis=0, dtype=np.int32)
                     cv2.circle(analy, (mbc[0, 0], mbc[0, 1]), 3, (255, 0, 255), -1)
 
