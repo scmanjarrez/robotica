@@ -8,18 +8,15 @@ from os import listdir, mkdir
 from os.path import isfile, join
 from scipy.misc import imread, imsave
 from sklearn.neighbors.nearest_centroid import NearestCentroid
-from sklearn.metrics.pairwise import euclidean_distances as ed
 
 
 import cv2
 import select_pixels as sel
-import time
-
+import time # noqa, disable flycheck warning
 
 # from matplotlib import pyplot as plt
 # from mpl_toolkits.mplot3d import Axes3D
 # from mpl_toolkits.mplot3d import proj3d
-
 
 video = 'video2017-3.avi'
 trainImg = '576'
@@ -222,7 +219,7 @@ def segmentation(clfN, args):
             line_px = (reshape_back == 2).astype(np.uint8)[90:, :]*255
 
             # FindContours is destructive, so we copy this image
-            # line_px_aux = line_px.copy()
+            line_px_aux = line_px.copy()
 
             # Image with the arrow/mark in white
             arrow_mark_px = (reshape_back == 0).astype(np.uint8)[90:, :]*255
@@ -416,34 +413,36 @@ def segmentation(clfN, args):
                     cv2.line(analy, (int(peak[0]), int(peak[1])), (int(center[0]), int(center[1])), (0, 0, 255), 2)
                     cv2.circle(analy, (int(peak[0]), int(peak[1])), 3, (0, 255, 0), -1)
 
-            for cnt in newcnts_l:
-                topmost = tuple(cnt[cnt[:, :, 1].argmin()][0])
-                bottommost = tuple(cnt[cnt[:, :, 1].argmax()][0])
-                cv2.circle(analy, topmost, 3, (0, 0, 0), -1)
-                cv2.circle(analy, bottommost, 3, (0, 0, 0), -1)
-            # right_border = line_px_aux[:, :20].copy()
-            # cv2.imshow("leftb", right_border)
-            # left_border = line_px_aux[:, 300:].copy()
-            # cv2.imshow("rightb", left_border)
-            # top_border = line_px_aux[:20, :].copy()
-            # cv2.imshow("topb", top_border)
-            # bot_border = line_px_aux[130:, :].copy()
-            # cv2.imshow("botb", bot_border)
+            # for cnt in newcnts_l:
+            #     topmost = tuple(cnt[cnt[:, :, 1].argmin()][0])
+            #     bottommost = tuple(cnt[cnt[:, :, 1].argmax()][0])
+            #     cv2.circle(analy, topmost, 3, (0, 0, 0), -1)
+            #     cv2.circle(analy, bottommost, 3, (0, 0, 0), -1)
+            lb = line_px_aux[:, :20].copy()
+            rb = line_px_aux[:, 300:].copy()
+            tb = line_px_aux[:20, :].copy()
+            bb = line_px_aux[130:, :].copy()
 
-            # l_cont, h = cv2.findContours(left_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            # r_cont, h = cv2.findContours(right_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            # t_cont, h = cv2.findContours(top_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            # b_cont, h = cv2.findContours(bot_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            # line_px_aux = cv2.cvtColor(line_px_aux, cv2.COLOR_GRAY2BGR)
-            # cv2.drawContours(line_px_aux, l_cont, -1, (255, 0, 0), 1)
-            # cv2.drawContours(line_px_aux, r_cont, -1, (0, 255, 0), 1)
-            # cv2.drawContours(line_px_aux, t_cont, -1, (255, 0, 255), 1)
-            # cv2.drawContours(line_px_aux, b_cont, -1, (0, 0, 255), 1)
-            # cv2.imshow("Borders", line_px_aux)
+            lc, h = cv2.findContours(lb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            rc, h = cv2.findContours(rb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            if rc:
+                for r in rc:
+                    r[:, :, 0] = r[:, :, 0] + 300
+            tc, h = cv2.findContours(tb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            bc, h = cv2.findContours(bb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            if bc:
+                for b in bc:
+                    b[:, :, 1] = b[:, :, 1] + 130
+
+            line_px_aux = cv2.cvtColor(line_px_aux, cv2.COLOR_GRAY2BGR)
+            cv2.drawContours(line_px_aux, lc, -1, (255, 0, 0), 2)
+            cv2.drawContours(line_px_aux, rc, -1, (0, 255, 0), 2)
+            cv2.drawContours(line_px_aux, tc, -1, (255, 0, 255), 2)
+            cv2.drawContours(line_px_aux, bc, -1, (0, 0, 255), 2)
+            cv2.imshow("Borders", line_px_aux)
 
             cv2.drawContours(analy, newcnts_l, -1, (255, 0, 0), 1)
             cv2.drawContours(analy, newcnts_am, -1, (0, 0, 255), 1)
-
             cv2.imshow("Contours", analy)
 
             if args.genVideo:
@@ -554,7 +553,7 @@ def main(parser, args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(prog='PROG')
+    parser = argparse.ArgumentParser(prog='robotica.py')
 
     parser.add_argument('-v', '--video',
                         help='Select a different video.')
