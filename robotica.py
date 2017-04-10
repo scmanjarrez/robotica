@@ -7,7 +7,7 @@ from os import listdir, mkdir
 from os.path import isfile, join
 from scipy.misc import imread, imsave
 from sklearn.neighbors.nearest_centroid import NearestCentroid
-
+from sklearn.neighbors import KNeighborsClassifier
 
 import cv2
 import select_pixels as sel
@@ -18,13 +18,13 @@ import time # noqa, disable flycheck warning
 # from mpl_toolkits.mplot3d import proj3d
 
 video = 'video2017-3.avi'
-trainImg = '576'
-trainDir = 'TrainFrames'
-segmDir = 'SegmFrames'
-normDir = 'NormFrames'
-analyDir = 'AnalyFrames'
-chullDir = 'ChullFrames'
-vidDir = 'OutputVideos'
+train_img = '576'
+train_dir = 'TrainFrames'
+segm_dir = 'SegmFrames'
+norm_dir = 'NormFrames'
+analy_dir = 'AnalyFrames'
+chull_dir = 'ChullFrames'
+vid_dir = 'OutputVideos'
 
 font = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -61,7 +61,7 @@ def marking():
     capture = cv2.VideoCapture(video)
     count = 0
 
-    make_dir(trainDir)
+    make_dir(train_dir)
 
     pause = False
     while(capture.isOpened()):
@@ -86,13 +86,13 @@ def marking():
             # mark image, (s)top
             if (key & 0xFF) == ord('s'):
                 # change from BGR to RGB format
-                imRGB = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                im_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
                 # mark training pixels
-                markImg = sel.select_fg_bg(imRGB)
+                mark_img = sel.select_fg_bg(im_rgb)
 
-                imsave(join(trainDir, 'OriginalImg'+str(count)+'.png'), imRGB)
-                imsave(join(trainDir, 'TrainingImg'+str(count)+'.png'), markImg)
+                imsave(join(train_dir, 'OriginalImg'+str(count)+'.png'), im_rgb)
+                imsave(join(train_dir, 'TrainingImg'+str(count)+'.png'), mark_img)
 
             # (q)uit program
             if (key & 0xFF) == ord('q'):
@@ -113,11 +113,11 @@ def marking():
 
 
 def training(args):
-    make_dir(normDir)
+    make_dir(norm_dir)
 
     # Height x Width x channel
-    origImg = imread(join(trainDir, 'OriginalImg'+trainImg+'.png'))
-    markImg = imread(join(trainDir, 'TrainingImg'+trainImg+'.png'))
+    orig_img = imread(join(train_dir, 'OriginalImg'+train_img+'.png'))
+    mark_img = imread(join(train_dir, 'TrainingImg'+train_img+'.png'))
 
     # Normalization: all = R+G+B, R = R/all, G = G/all, B = B/all
     # [[[1, 2, 3],                 [[[1, 4],                                     [[[1/6 , 4/15],                      [[[1/6 , 2/6 , 3/6 ],
@@ -132,7 +132,7 @@ def training(args):
     #  [[5, 6, 7],                  [[3, 6],                                      [[3/6 , 6/15],                       [[5/18, 6/18, 7/18],
     #   [8, 9, 0]]]                  [4, 6],                                       [4/15, 6/21],                        [8/17, 9/17, 0/17]]]
     #                                [7, 0]]]                                      [7/18, 0/17]]]
-    ImgNorm = np.rollaxis((np.rollaxis(origImg, 2)+0.0)/np.sum(origImg, 2), 0, 3)
+    img_norm = np.rollaxis((np.rollaxis(orig_img, 2)+0.0)/np.sum(orig_img, 2), 0, 3)
 
     # Get marked points from original image
     # np.equal(markImg, (255, 0, 0) --> X*Y*3
@@ -142,21 +142,21 @@ def training(args):
     # np.where(np.all...) --> X*Y
     # Matrix of indices with red marked pixels
 
-    data_redN = ImgNorm[np.where(np.all(np.equal(markImg, (255, 0, 0)), 2))]
-    data_greenN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 255, 0)), 2))]
-    data_blueN = ImgNorm[np.where(np.all(np.equal(markImg, (0, 0, 255)), 2))]
+    data_red = img_norm[np.where(np.all(np.equal(mark_img, (255, 0, 0)), 2))]
+    data_green = img_norm[np.where(np.all(np.equal(mark_img, (0, 255, 0)), 2))]
+    data_blue = img_norm[np.where(np.all(np.equal(mark_img, (0, 0, 255)), 2))]
 
-    dataN = np.concatenate([data_redN, data_greenN, data_blueN])
+    data = np.concatenate([data_red, data_green, data_blue])
 
-    targetN = np.concatenate([np.zeros(len(data_redN[:]), dtype=int),
-                              np.ones(len(data_greenN[:]), dtype=int),
-                              np.full(len(data_blueN[:]), 2, dtype=int)])
+    target = np.concatenate([np.zeros(len(data_red[:]), dtype=int),
+                             np.ones(len(data_green[:]), dtype=int),
+                             np.full(len(data_blue[:]), 2, dtype=int)])
 
     # fig = plt.figure(figsize=(8, 8))
     # ax = fig.add_subplot(111, projection='3d')
     # plt.rcParams['legend.fontsize'] = 10
 
-    # data = [data_redN, data_greenN, data_blueN]
+    # data = [data_red, data_green, data_blue]
     # colors_markers = ('red', 'green', 'blue')
     # for pos in range(3):
     #     ax.plot(data[pos][:, 0], data[pos][:, 1], data[pos][:, 2], '*',
@@ -168,25 +168,25 @@ def training(args):
     # ax.set_zlim(0, 1)
     # plt.show()
 
-    clfN = NearestCentroid()
-    clfN.fit(dataN, targetN)
+    clf = NearestCentroid()
+    clf.fit(data, target)
 
-    return clfN
+    return clf
 
 
-def segmentation(clfN, args):
+def segmentation(clf, args):
     capture = cv2.VideoCapture(video)
     count = 0
 
     if args.genVideo:
         if args.genVideo == 'segm':
-            make_dir(segmDir)
+            make_dir(segm_dir)
         elif args.genVideo == 'norm':
-            make_dir(normDir)
+            make_dir(norm_dir)
         elif args.genVideo == 'analy':
-            make_dir(analyDir)
+            make_dir(analy_dir)
         elif args.genVideo == 'chull':
-            make_dir(chullDir)
+            make_dir(chull_dir)
 
     pause = False
     # ultEnt = (0, 0)
@@ -196,23 +196,23 @@ def segmentation(clfN, args):
         if not pause:
             ret, frame = capture.read()
         if ret and not count % 24:
-            rgbFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             cv2.imshow('Original', frame)
 
             shape = frame.shape
 
-            ImgNorm = np.rollaxis((np.rollaxis(rgbFrame, 2)+0.0)/np.sum(rgbFrame, 2), 0, 3)
+            img_norm = np.rollaxis((np.rollaxis(rgb_frame, 2)+0.0)/np.sum(rgb_frame, 2), 0, 3)
 
             if args.genVideo and args.genVideo == 'norm':
-                imsave(join(normDir, 'Norm'+str(count)+'.png'), ImgNorm*255)
+                imsave(join(norm_dir, 'Norm'+str(count)+'.png'), img_norm*255)
 
             # Reshape in order to reduce the 3-dimensional array to 1-dimensional (needed for predict)
-            reshape = ImgNorm.reshape(shape[0]*shape[1], 3)
-            labelsN = clfN.predict(reshape)
+            reshape = img_norm.reshape(shape[0]*shape[1], 3)
+            labels = clf.predict(reshape)
 
             # Reshape back, from 1-dimensional to 2-dimensional
-            reshape_back = labelsN.reshape(shape[0], shape[1])
+            reshape_back = labels.reshape(shape[0], shape[1])
 
             # Image with the line in white
             line_px = (reshape_back == 2).astype(np.uint8)[90:, :]*255
@@ -231,16 +231,16 @@ def segmentation(clfN, args):
             # Automatic reshape is being done here, from 2-dimensional to 3-dimensional array [[1, 1, ...]] -> [[[0,0,0], ....]]
             aux = paleta[reshape_back]
 
-            segmImgN = cv2.cvtColor(aux, cv2.COLOR_RGB2BGR)
+            segm_img = cv2.cvtColor(aux, cv2.COLOR_RGB2BGR)
 
             # Should we use cv2.CHAIN_APPROX_NONE? or cv2.CHAIN_APPROX_SIMPLE? the former stores all points, the latter stores the basic ones
             # Find contours of line
-            cnts_l, hier_l = cv2.findContours(line_px, cv2.RETR_LIST,
-                                              cv2.CHAIN_APPROX_NONE)
+            cnts_l, hier = cv2.findContours(line_px, cv2.RETR_LIST,
+                                            cv2.CHAIN_APPROX_NONE)
 
             # Find contours of arror/mark
-            cnts_am, hier_am = cv2.findContours(arrow_mark_px, cv2.RETR_LIST,
-                                                cv2.CHAIN_APPROX_NONE)
+            cnts_am, hier = cv2.findContours(arrow_mark_px, cv2.RETR_LIST,
+                                             cv2.CHAIN_APPROX_NONE)
 
             # Removes small contours, i.e: small squares
             newcnts_l = [cnt for cnt in cnts_l if len(cnt) > 100]
@@ -250,65 +250,65 @@ def segmentation(clfN, args):
             analy = frame.copy()[90:]
 
             # Return list of indices of points in contour
-            chullList_l = [cv2.convexHull(cont, returnPoints=False) for cont in newcnts_l]
-            chullList_am = [cv2.convexHull(cont, returnPoints=False) for cont in newcnts_am]
+            chull_list_l = [cv2.convexHull(cont, returnPoints=False) for cont in newcnts_l]
+            chull_list_am = [cv2.convexHull(cont, returnPoints=False) for cont in newcnts_am]
 
             # Return convexity defects from previous contours, each contour must have at least 3 points
             # Convexity Defect -> [start_point, end_point, farthest_point, distance_to_farthest_point]
-            convDefs_l = [cv2.convexityDefects(cont, chull) for (cont, chull) in
-                          zip(newcnts_l, chullList_l) if len(cont) > 3 and len(chull) > 3]
+            conv_defs_l = [cv2.convexityDefects(cont, chull) for (cont, chull) in
+                           zip(newcnts_l, chull_list_l) if len(cont) > 3 and len(chull) > 3]
 
-            convDefs_am = [cv2.convexityDefects(cont, chull) for (cont, chull) in
-                           zip(newcnts_am, chullList_am) if len(cont) > 3 and len(chull) > 3]
+            conv_defs_am = [cv2.convexityDefects(cont, chull) for (cont, chull) in
+                            zip(newcnts_am, chull_list_am) if len(cont) > 3 and len(chull) > 3]
 
-            listConvDefs_l = []
-            listCont_l = []
-            listConvDefs_am = []
-            listCont_am = []
+            list_conv_defs_l = []
+            list_cont_l = []
+            list_conv_defs_am = []
+            list_cont_am = []
             # Only save the convexity defects whose hole is larger than ~4 pixels (1000/256).
-            for pos, el in enumerate(convDefs_l):
+            for pos, el in enumerate(conv_defs_l):
                 if el is not None:
                     aux = el[:, :, 3] > 1000
                     if any(aux):
-                        listConvDefs_l.append(el[aux])
-                        listCont_l.append(newcnts_l[pos])
+                        list_conv_defs_l.append(el[aux])
+                        list_cont_l.append(newcnts_l[pos])
 
-            for pos, el in enumerate(convDefs_am):
+            for pos, el in enumerate(conv_defs_am):
                 if el is not None:
                     aux = el[:, :, 3] > 1000
                     if any(aux):
-                        listConvDefs_am.append(el[aux])
-                        listCont_am.append(newcnts_am[pos])
+                        list_conv_defs_am.append(el[aux])
+                        list_cont_am.append(newcnts_am[pos])
 
             # obj = None
             mark = True
 
-            if not listConvDefs_l:
-                cv2.putText(analy, "Straight line", (0, 140),
+            if not list_conv_defs_l:
+                cv2.putText(analy, "Linea recta", (0, 140),
                             font, 0.5, (0, 0, 0), 1)
                 # obj = "mark"
 
-            for pos, el in enumerate(listConvDefs_l):
+            for pos, el in enumerate(list_conv_defs_l):
                 for i in range(el.shape[0]):
                     if el.shape[0] == 1:
                         # [NormX, NormY, PointX, PointY]
-                        [vx, vy, x, y] = cv2.fitLine(listCont_l[pos], cv2.cv.CV_DIST_L2, 0, 0.01, 0.01)
+                        [vx, vy, x, y] = cv2.fitLine(list_cont_l[pos], cv2.cv.CV_DIST_L2, 0, 0.01, 0.01)
                         slope = vy/vx
                         if slope > 0:
-                            cv2.putText(analy, "Left curve", (0, 140),
+                            cv2.putText(analy, "Giro izq", (0, 140),
                                         font, 0.5, (0, 0, 0), 1)
                         else:
-                            cv2.putText(analy, "Right curve", (0, 140),
+                            cv2.putText(analy, "Giro dcha", (0, 140),
                                         font, 0.5, (0, 0, 0), 1)
                         # obj = "mark"
 
                     elif el.shape[0] == 2 or el.shape[0] == 3:
-                        cv2.putText(analy, "2-way crossing", (0, 140),
+                        cv2.putText(analy, "Cruce 2 salidas", (0, 140),
                                     font, 0.5, (0, 0, 0), 1)
                         mark = False
                         # obj = "arrow"
                     elif el.shape[0] == 4:
-                        cv2.putText(analy, "3-way crossing", (0, 140),
+                        cv2.putText(analy, "Cruce 3 salidas", (0, 140),
                                     font, 0.5, (0, 0, 0), 1)
                         mark = False
                         # obj = "arrow"
@@ -316,20 +316,20 @@ def segmentation(clfN, args):
                     if args.genVideo and args.genVideo == 'chull':
                         # Draw convex hull and hole
                         s, e, f, d = el[i]
-                        start = tuple(listCont_l[pos][s][0])
-                        end = tuple(listCont_l[pos][e][0])
-                        far = tuple(listCont_l[pos][f][0])
+                        start = tuple(list_cont_l[pos][s][0])
+                        end = tuple(list_cont_l[pos][e][0])
+                        far = tuple(list_cont_l[pos][f][0])
                         cv2.line(analy, start, end, [0, 255, 0], 2)
                         cv2.circle(analy, far, 3, [0, 0, 255], -1)
 
             if args.genVideo and args.genVideo == 'chull':
-                for pos, el in enumerate(listConvDefs_am):
+                for pos, el in enumerate(list_conv_defs_am):
                     for i in range(el.shape[0]):
                         # Draw convex hull and hole
                         s, e, f, d = el[i]
-                        start = tuple(listCont_am[pos][s][0])
-                        end = tuple(listCont_am[pos][e][0])
-                        far = tuple(listCont_am[pos][f][0])
+                        start = tuple(list_cont_am[pos][s][0])
+                        end = tuple(list_cont_am[pos][e][0])
+                        far = tuple(list_cont_am[pos][f][0])
                         cv2.line(analy, start, end, [0, 255, 0], 2)
                         cv2.circle(analy, far, 3, [0, 0, 255], -1)
 
@@ -361,7 +361,7 @@ def segmentation(clfN, args):
                         cv2.line(analy, (int(center[0]), int(center[1])), (linex1, liney1), (255, 0, 0), 2)
                         cv2.circle(analy, (int(center[0]), int(center[1])), 3, (0, 0, 0), -1)
                         cv2.ellipse(analy, ellipse, (0, 255, 0), 2)
-                        cv2.putText(analy, "Ellipse angle: "+str(angle), (0, 110),
+                        cv2.putText(analy, "Ang. elipse: "+str(angle), (0, 110),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
                     # Get coordinates of arrow pixels
@@ -393,71 +393,67 @@ def segmentation(clfN, args):
                     angle360 = int(angle360)
 
                     if angle360 >= 337.5 or angle360 < 22.5:
-                        cv2.putText(analy, "North (="+str(angle360)+"deg)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        cv2.putText(analy, "Norte (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     elif angle360 < 67.5:
-                        cv2.putText(analy, "Northeast (="+str(angle360)+"deg)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        cv2.putText(analy, "Noreste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     elif angle360 < 112.5:
-                        cv2.putText(analy, "East (="+str(angle360)+"deg)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        cv2.putText(analy, "Este (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     elif angle360 < 157.5:
-                        cv2.putText(analy, "Southeast (="+str(angle360)+"deg)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        cv2.putText(analy, "Sureste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     elif angle360 < 202.5:
-                        cv2.putText(analy, "South (="+str(angle360)+"o)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        cv2.putText(analy, "Sur (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     elif angle360 < 247.5:
-                        cv2.putText(analy, "Southwest (="+str(angle360)+"deg)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        cv2.putText(analy, "Suroeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     elif angle360 < 292.5:
-                        cv2.putText(analy, "West (="+str(angle360)+"deg)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        cv2.putText(analy, "Oeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     elif angle360 < 337.5:
-                        cv2.putText(analy, "Northwest (="+str(angle360)+"deg)", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        cv2.putText(analy, "Noroeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
                     cv2.line(analy, (int(peak[0]), int(peak[1])), (int(center[0]), int(center[1])), (0, 0, 255), 2)
                     cv2.circle(analy, (int(peak[0]), int(peak[1])), 3, (0, 255, 0), -1)
 
-            lb = line_px_aux[:, :10].copy()
-            rb = line_px_aux[:, 310:].copy()
-            tb = line_px_aux[:10, 10:310].copy()
-            bb = line_px_aux[140:, 10:310].copy()
+            left_border = line_px_aux[:, :10].copy()
+            right_border = line_px_aux[:, 310:].copy()
+            top_border = line_px_aux[:10, 10:310].copy()
+            bot_border = line_px_aux[140:, 10:310].copy()
 
-            lc, h = cv2.findContours(lb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            print "left: ", [cv2.contourArea(cnt) for cnt in lc]
-            lc = [cnt for cnt in lc if cv2.contourArea(cnt) > 75]
-            if lc:
-                for l in lc:
+            left_cnt, hier = cv2.findContours(left_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            left_cnt = [cnt for cnt in left_cnt if cv2.contourArea(cnt) > 75]
+            if left_cnt:
+                for l in left_cnt:
                     mlc = np.mean(l[:, :, :], axis=0, dtype=np.int32)
                     cv2.circle(analy, (mlc[0, 0], mlc[0, 1]), 3, (0, 255, 0), -1)
 
-            rc, h = cv2.findContours(rb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            print "right: ", [cv2.contourArea(cnt) for cnt in rc]
-            rc = [cnt for cnt in rc if cv2.contourArea(cnt) > 75]
-            if rc:
-                for r in rc:
+            right_cnt, hier = cv2.findContours(right_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            right_cnt = [cnt for cnt in right_cnt if cv2.contourArea(cnt) > 75]
+            if right_cnt:
+                for r in right_cnt:
                     r[:, :, 0] = r[:, :, 0] + 310
                     mrc = np.mean(r[:, :, :], axis=0, dtype=np.int32)
                     cv2.circle(analy, (mrc[0, 0], mrc[0, 1]), 3, (0, 255, 0), -1)
 
-            tc, h = cv2.findContours(tb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            print "top: ", [cv2.contourArea(cnt) for cnt in tc]
-            tc = [cnt for cnt in tc if cv2.contourArea(cnt) > 75]
-            if tc:
-                for t in tc:
+            top_cnt, hier = cv2.findContours(top_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            top_cnt = [cnt for cnt in top_cnt if cv2.contourArea(cnt) > 75]
+            if top_cnt:
+                for t in top_cnt:
                     t[:, :, 0] = t[:, :, 0] + 10
                     mtc = np.mean(t[:, :, :], axis=0, dtype=np.int32)
                     cv2.circle(analy, (mtc[0, 0], mtc[0, 1]), 3, (0, 255, 0), -1)
 
-            bc, h = cv2.findContours(bb, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            print "bot: ", [cv2.contourArea(cnt) for cnt in bc]
-            bc = [cnt for cnt in bc if cv2.contourArea(cnt) > 75]
-            if bc:
-                for b in bc:
+            bot_cnt, hier = cv2.findContours(bot_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+            bot_cnt = [cnt for cnt in bot_cnt if cv2.contourArea(cnt) > 75]
+            if bot_cnt:
+                for b in bot_cnt:
                     b[:, :, 0] = b[:, :, 0] + 10
                     b[:, :, 1] = b[:, :, 1] + 140
                     mbc = np.mean(b[:, :, :], axis=0, dtype=np.int32)
                     cv2.circle(analy, (mbc[0, 0], mbc[0, 1]), 3, (255, 0, 255), -1)
 
             if args.genVideo and args.genVideo == 'chull':
-                cv2.drawContours(analy, lc, -1, (255, 0, 0), 2)
-                cv2.drawContours(analy, rc, -1, (0, 255, 0), 2)
-                cv2.drawContours(analy, tc, -1, (255, 0, 255), 2)
-                cv2.drawContours(analy, bc, -1, (0, 0, 255), 2)
+                cv2.drawContours(analy, left_cnt, -1, (255, 0, 0), 2)
+                cv2.drawContours(analy, right_cnt, -1, (0, 255, 0), 2)
+                cv2.drawContours(analy, top_cnt, -1, (255, 0, 255), 2)
+                cv2.drawContours(analy, bot_cnt, -1, (0, 0, 255), 2)
 
             cv2.drawContours(analy, newcnts_l, -1, (255, 0, 0), 1)
             cv2.drawContours(analy, newcnts_am, -1, (0, 0, 255), 1)
@@ -465,11 +461,11 @@ def segmentation(clfN, args):
 
             if args.genVideo:
                 if args.genVideo == 'segm':
-                    cv2.imwrite(join(segmDir, 'SegmImg'+str(count)+'.png'), segmImgN)
+                    cv2.imwrite(join(segm_dir, 'SegmImg'+str(count)+'.png'), segm_img)
                 elif args.genVideo == 'analy':
-                    cv2.imwrite(join(analyDir, 'AnalyImg'+str(count)+'.png'), analy)
+                    cv2.imwrite(join(analy_dir, 'AnalyImg'+str(count)+'.png'), analy)
                 elif args.genVideo == 'chull':
-                    cv2.imwrite(join(chullDir, 'ChullImg'+str(count)+'.png'), analy)
+                    cv2.imwrite(join(chull_dir, 'ChullImg'+str(count)+'.png'), analy)
 
             # compare key pressed with the ascii code of the character
             key = cv2.waitKey(1000)
@@ -497,35 +493,41 @@ def segmentation(clfN, args):
     cv2.destroyAllWindows()
 
 
+def mark_train():
+    marks = ['Cruz', 'Escalera', 'Persona', 'Telefono']
+    aux_dir = 1
+    # neigh = KNeighborsClassifier(n_neighbors=1)
+    pass
+
+
 def gen_video(name, procedure):
-    make_dir(vidDir)
+    make_dir(vid_dir)
 
-    auxDir = None
-
+    aux_dir = None
     if procedure == 'segm':
-        auxDir = segmDir
+        aux_dir = segm_dir
     elif procedure == 'norm':
-        auxDir = normDir
+        aux_dir = norm_dir
     elif procedure == 'analy':
-        auxDir = analyDir
+        aux_dir = analy_dir
     elif procedure == 'chull':
-        auxDir = chullDir
+        aux_dir = chull_dir
 
-    images = [f for f in listdir(auxDir) if isfile(join(auxDir, f))]
+    images = [f for f in listdir(aux_dir) if isfile(join(aux_dir, f))]
 
     if not len(images):
         print "No images to create the video."
         sys.exit()
 
     images = natural_sort(images)
-    aux = cv2.imread(join(auxDir, images[0]))
+    aux = cv2.imread(join(aux_dir, images[0]))
 
     height, width, layers = aux.shape
 
-    video = cv2.VideoWriter(join(vidDir, name+'.avi'), cv2.cv.CV_FOURCC('M', 'P', '4', '2'), 1.0, (width, height))
+    video = cv2.VideoWriter(join(vid_dir, name+'.avi'), cv2.cv.CV_FOURCC('M', 'P', '4', '2'), 1.0, (width, height))
 
     for img in images:
-        video.write(cv2.imread(join(auxDir, img)))
+        video.write(cv2.imread(join(aux_dir, img)))
 
     cv2.destroyAllWindows()
     video.release()
@@ -550,13 +552,13 @@ def make_dir(dirName):
 
 
 def main(parser, args):
-    global video, trainImg
+    global video, train_img
 
     if args.video:
         video = args.video
 
     if args.trainImg:
-        trainImg = args.trainImg
+        train_img = args.trainImg
 
     # Mark lots of images
     if args.mark:
