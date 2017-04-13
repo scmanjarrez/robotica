@@ -8,6 +8,7 @@ from os.path import isfile, join
 from scipy.misc import imread, imsave
 from sklearn.neighbors.nearest_centroid import NearestCentroid
 from sklearn.neighbors import KNeighborsClassifier
+from random import shuffle
 
 import cv2
 import select_pixels as sel
@@ -27,6 +28,7 @@ chull_dir = 'ChullFrames'
 vid_dir = 'OutputVideos'
 
 font = cv2.FONT_HERSHEY_SIMPLEX
+
 
 # class StateAutomata:
 #     # mark, ~mark, ~arrow, arrow
@@ -68,7 +70,7 @@ def marking():
         if not pause:
             ret, frame = capture.read()
         if ret and not count % 24:
-            cv2.imshow('Frame', frame)
+            cv2.imshow('Image', frame)
 
             # compare key pressed with the ascii code of the character
             key = cv2.waitKey(1000)
@@ -170,11 +172,52 @@ def training(args):
 
     clf = NearestCentroid()
     clf.fit(data, target)
-
     return clf
 
 
-def segmentation(clf, args):
+def segmentation(clf, frame, count, args, segm):
+    shape = frame.shape  # Segm all
+    # shape = frame[90:, :].shape
+
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Segm all
+    # frame_rgb = cv2.cvtColor(frame[90:, :], cv2.COLOR_BGR2RGB)
+
+    img_norm = np.rollaxis((np.rollaxis(frame_rgb, 2)+0.0)/np.sum(frame_rgb, 2), 0, 3)
+
+    if args.genVideo and args.genVideo == 'norm':
+        imsave(join(norm_dir, 'Norm'+str(count)+'.png'), img_norm*255)
+
+    # Reshape in order to reduce the 3-dimensional array to 1-dimensional (needed for predict)
+    reshape = img_norm.reshape(shape[0]*shape[1], 3)
+    labels = clf.predict(reshape)
+
+    # Reshape back, from 1-dimensional to 2-dimensional
+    reshape_back = labels.reshape(shape[0], shape[1])
+
+    paleta = np.array([[255, 0, 0], [0, 0, 0], [0, 0, 255]], dtype=np.uint8)
+
+    # Automatic reshape is being done here, from 2-dimensional to 3-dimensional array [[1, 1, ...]] -> [[[0,0,0], ....]]
+    aux = paleta[reshape_back]
+
+    segm_img = cv2.cvtColor(aux, cv2.COLOR_RGB2BGR)
+
+    if segm:
+        cv2.imshow('Segm', segm_img)
+
+    if args.genVideo:
+        if args.genVideo == 'segm':
+            cv2.imwrite(join(segm_dir, 'SegmImg'+str(count)+'.png'), segm_img)
+
+    # Image with the line in white
+    line_img = (reshape_back == 2).astype(np.uint8)*255
+
+    # Image with the arrow/mark in white
+    arrow_mark_img = (reshape_back == 0).astype(np.uint8)*255
+
+    return line_img, arrow_mark_img
+
+
+def analysis(clf, args, segm=False):
     capture = cv2.VideoCapture(video)
     count = 0
 
@@ -189,57 +232,28 @@ def segmentation(clf, args):
             make_dir(chull_dir)
 
     pause = False
-    # ultEnt = (0, 0)
-    # i = 0
     # state_automata = StateAutomata()
     while(capture.isOpened()):
         if not pause:
             ret, frame = capture.read()
         if ret and not count % 24:
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
             cv2.imshow('Original', frame)
 
-            shape = frame.shape
-
-            img_norm = np.rollaxis((np.rollaxis(rgb_frame, 2)+0.0)/np.sum(rgb_frame, 2), 0, 3)
-
-            if args.genVideo and args.genVideo == 'norm':
-                imsave(join(norm_dir, 'Norm'+str(count)+'.png'), img_norm*255)
-
-            # Reshape in order to reduce the 3-dimensional array to 1-dimensional (needed for predict)
-            reshape = img_norm.reshape(shape[0]*shape[1], 3)
-            labels = clf.predict(reshape)
-
-            # Reshape back, from 1-dimensional to 2-dimensional
-            reshape_back = labels.reshape(shape[0], shape[1])
-
-            # Image with the line in white
-            line_px = (reshape_back == 2).astype(np.uint8)[90:, :]*255
+            line_img, arrow_mark_img = segmentation(clf, frame, count, args, segm)
 
             # FindContours is destructive, so we copy this image
-            line_px_aux = line_px.copy()
-
-            # Image with the arrow/mark in white
-            arrow_mark_px = (reshape_back == 0).astype(np.uint8)[90:, :]*255
+            line_img_cp = line_img.copy()
 
             # FindContours is destructive, so we copy this image
-            arrow_mark_px_aux = arrow_mark_px.copy()
-
-            paleta = np.array([[255, 0, 0], [0, 0, 0], [0, 0, 255]], dtype=np.uint8)
-
-            # Automatic reshape is being done here, from 2-dimensional to 3-dimensional array [[1, 1, ...]] -> [[[0,0,0], ....]]
-            aux = paleta[reshape_back]
-
-            segm_img = cv2.cvtColor(aux, cv2.COLOR_RGB2BGR)
+            arrow_mark_img_cp = arrow_mark_img.copy()
 
             # Should we use cv2.CHAIN_APPROX_NONE? or cv2.CHAIN_APPROX_SIMPLE? the former stores all points, the latter stores the basic ones
             # Find contours of line
-            cnts_l, hier = cv2.findContours(line_px, cv2.RETR_LIST,
+            cnts_l, hier = cv2.findContours(line_img, cv2.RETR_LIST,
                                             cv2.CHAIN_APPROX_NONE)
 
             # Find contours of arror/mark
-            cnts_am, hier = cv2.findContours(arrow_mark_px, cv2.RETR_LIST,
+            cnts_am, hier = cv2.findContours(arrow_mark_img, cv2.RETR_LIST,
                                              cv2.CHAIN_APPROX_NONE)
 
             # Removes small contours, i.e: small squares
@@ -366,7 +380,7 @@ def segmentation(clf, args):
 
                     # Get coordinates of arrow pixels
                     arrow = []
-                    for y, row in enumerate(arrow_mark_px_aux):
+                    for y, row in enumerate(arrow_mark_img_cp):
                         for x, col in enumerate(row):
                             if col == 255:
                                 arrow.append([x, y])
@@ -412,10 +426,10 @@ def segmentation(clf, args):
                     cv2.line(analy, (int(peak[0]), int(peak[1])), (int(center[0]), int(center[1])), (0, 0, 255), 2)
                     cv2.circle(analy, (int(peak[0]), int(peak[1])), 3, (0, 255, 0), -1)
 
-            left_border = line_px_aux[:, :10].copy()
-            right_border = line_px_aux[:, 310:].copy()
-            top_border = line_px_aux[:10, 10:310].copy()
-            bot_border = line_px_aux[140:, 10:310].copy()
+            left_border = line_img_cp[:, :10].copy()
+            right_border = line_img_cp[:, 310:].copy()
+            top_border = line_img_cp[:10, 10:310].copy()
+            bot_border = line_img_cp[140:, 10:310].copy()
 
             left_cnt, hier = cv2.findContours(left_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
             left_cnt = [cnt for cnt in left_cnt if cv2.contourArea(cnt) > 75]
@@ -460,9 +474,7 @@ def segmentation(clf, args):
             cv2.imshow("Contours", analy)
 
             if args.genVideo:
-                if args.genVideo == 'segm':
-                    cv2.imwrite(join(segm_dir, 'SegmImg'+str(count)+'.png'), segm_img)
-                elif args.genVideo == 'analy':
+                if args.genVideo == 'analy':
                     cv2.imwrite(join(analy_dir, 'AnalyImg'+str(count)+'.png'), analy)
                 elif args.genVideo == 'chull':
                     cv2.imwrite(join(chull_dir, 'ChullImg'+str(count)+'.png'), analy)
@@ -493,11 +505,46 @@ def segmentation(clf, args):
     cv2.destroyAllWindows()
 
 
-def mark_train():
+def mark_train(args):
+    clf = training(args)
     marks = ['Cruz', 'Escalera', 'Persona', 'Telefono']
-    aux_dir = 1
-    # neigh = KNeighborsClassifier(n_neighbors=1)
-    pass
+    mark_dir = 'TrainMark'
+    train_data = []
+    target_val = []
+    all_f = []
+    for idx, m in enumerate(marks):
+        files = [join(mark_dir, m, 'chosen', f)
+                 for f in listdir(join(mark_dir, m, 'chosen'))]
+        all_f.extend(files)
+        for i in files:
+            frame = imread(i)
+            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            _, arrow_mark_img = segmentation(clf, frame_bgr, 0, args, segm=False)
+            hu_mom = cv2.HuMoments(cv2.moments(arrow_mark_img)).flatten()
+            train_data.append(hu_mom)
+            target_val.append(idx)
+
+    shuffle(all_f)
+
+    neigh = KNeighborsClassifier(n_neighbors=1)
+    neigh.fit(train_data, target_val)
+
+    for i in all_f:
+        frame = imread(i)
+        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        _, arrow_mark_img = segmentation(clf, frame_bgr, 0, args, segm=True)
+        hu_mom = cv2.HuMoments(cv2.moments(arrow_mark_img)).flatten()
+        pred = neigh.predict([hu_mom])
+        if pred == 0:
+            cv2.putText(frame_bgr, "Cruz", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+        elif pred == 1:
+            cv2.putText(frame_bgr, "Escalera", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+        elif pred == 2:
+            cv2.putText(frame_bgr, "Persona", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+        elif pred == 3:
+            cv2.putText(frame_bgr, "Telefono", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+        cv2.imshow("Test", frame_bgr)
+        cv2.waitKey(1000)
 
 
 def gen_video(name, procedure):
@@ -560,13 +607,17 @@ def main(parser, args):
     if args.trainImg:
         train_img = args.trainImg
 
+    mark_train(args)
+    sys.exit()
     # Mark lots of images
     if args.mark:
         marking()
-    # Select the ones you want to train
-    elif args.seg:
-        clfN = training(args)
-        segmentation(clfN, args)
+    elif args.segm:
+        clf = training(args)
+        analysis(clf, args, segm=True)
+    elif args.analy:
+        clf = training(args)
+        analysis(clf, args)
 
     if args.genVideo:
         gen_video(args.output, args.genVideo)
@@ -578,7 +629,7 @@ if __name__ == "__main__":
     parser.add_argument('-v', '--video',
                         help='Select a different video.')
 
-    parser.add_argument('-ti', '--trainImg',
+    parser.add_argument('-t', '--trainImg',
                         help='Select a different trainingImg.')
 
     parser.add_argument('-o', '--output',
@@ -591,11 +642,15 @@ if __name__ == "__main__":
                        action='store_true',
                        help='Start marking process.')
 
-    group.add_argument('-s', '--seg',
-                       action='store_true', default='True',
+    group.add_argument('-s', '--segm',
+                       action='store_true',
                        help='Start segmentation process.')
 
-    group.add_argument('-gv', '--genVideo',
+    group.add_argument('-a', '--analy',
+                       action='store_true', default='True',
+                       help='Start analysis process.')
+
+    group.add_argument('-g', '--genVideo',
                        choices=['segm', 'norm', 'analy', 'chull'],
                        nargs='?', const='analy',
                        help='Generate choosen procedure video.')
