@@ -20,6 +20,7 @@ import time # noqa, disable flycheck warning
 
 video = 'video2017-3.avi'
 train_img = '576'
+
 train_dir = 'TrainFrames'
 segm_dir = 'SegmFrames'
 norm_dir = 'NormFrames'
@@ -29,34 +30,38 @@ vid_dir = 'OutputVideos'
 
 font = cv2.FONT_HERSHEY_SIMPLEX
 
+neigh_clf = None
 
-# class StateAutomata:
-#     # mark, ~mark, ~arrow, arrow
-#     # States are 00, 01, 10, 11
-#     # On success increase state
-#     # On failure decrease state
-#     def __init__(self):
-#         self.states = ["-3", "-2", "-1", "0", "+1", "+2", "+3"]
-#         self.state = 3
 
-#     def state(self):
-#         return self.state
+class RoadAutomaton:
+    # recta==giro_izq==giro_dcha, cruce_2_vias==cruce_3_vias
+    # States are -, 0 , +
+    # On success increase state
+    # On failure decrease state
+    def __init__(self):
+        self.state = 0
 
-#     def __decrease(self):
-#         if self.state > 0:
-#             self.state -= 1
-#         return 0 if (self.state < 3) else 1
+    def _state(self):
+        return self.state
 
-#     def __increase(self):
-#         if self.state < 6:
-#             self.state += 1
-#         return 0 if (self.state < 3) else 1
+    def _reset(self):
+        if self.state:
+            self.state = 0
 
-#     def getState(self, state):
-#         if state == "mark":
-#             return self.__decrease()
-#         elif state == "arrow":
-#             return self.__increase()
+    # Return 0==marca if recta/giro, 1==flecha if cruce
+    def __decrease(self):
+        self.state -= 1
+        return 0 if (self.state < 0) else 1
+
+    def __increase(self):
+        self.state += 1
+        return 0 if (self.state < 0) else 1
+
+    def getItem(self, state):
+        if state:
+            return self.__decrease()
+        else:
+            return self.__increase()
 
 
 def marking():
@@ -114,12 +119,18 @@ def marking():
     cv2.destroyAllWindows()
 
 
-def training(args):
+# mark and train_img_m params in case of training knn classifier (marks)
+# train with a different training image
+def training(mark=False, train_img_m=''):
     make_dir(norm_dir)
 
     # Height x Width x channel
-    orig_img = imread(join(train_dir, 'OriginalImg'+train_img+'.png'))
-    mark_img = imread(join(train_dir, 'TrainingImg'+train_img+'.png'))
+    if mark:
+        orig_img = imread(join(train_dir, 'OriginalImg'+train_img_m+'.png'))
+        mark_img = imread(join(train_dir, 'TrainingImg'+train_img_m+'.png'))
+    else:
+        orig_img = imread(join(train_dir, 'OriginalImg'+train_img+'.png'))
+        mark_img = imread(join(train_dir, 'TrainingImg'+train_img+'.png'))
 
     # Normalization: all = R+G+B, R = R/all, G = G/all, B = B/all
     # [[[1, 2, 3],                 [[[1, 4],                                     [[[1/6 , 4/15],                      [[[1/6 , 2/6 , 3/6 ],
@@ -175,12 +186,15 @@ def training(args):
     return clf
 
 
-def segmentation(clf, frame, count, args, segm):
-    shape = frame.shape  # Segm all
-    # shape = frame[90:, :].shape
-
-    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Segm all
-    # frame_rgb = cv2.cvtColor(frame[90:, :], cv2.COLOR_BGR2RGB)
+# mark param to segmentate all the image, not just the 90: pixels
+# segm param to show a frame with the segmentated image
+def segmentation(clf, frame, count, args, segm, mark=False):
+    if not mark:
+        shape = frame[90:, :].shape
+        frame_rgb = cv2.cvtColor(frame[90:, :], cv2.COLOR_BGR2RGB)
+    else:
+        shape = frame.shape  # Segm all
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Segm all
 
     img_norm = np.rollaxis((np.rollaxis(frame_rgb, 2)+0.0)/np.sum(frame_rgb, 2), 0, 3)
 
@@ -232,19 +246,20 @@ def analysis(clf, args, segm=False):
             make_dir(chull_dir)
 
     pause = False
-    # state_automata = StateAutomata()
+    road_aut = RoadAutomaton()
     while(capture.isOpened()):
         if not pause:
             ret, frame = capture.read()
-        if ret and not count % 24:
+        # if ret and not count % 24:
+        if ret:
             cv2.imshow('Original', frame)
 
             line_img, arrow_mark_img = segmentation(clf, frame, count, args, segm)
 
-            # FindContours is destructive, so we copy this image
+            # FindContours is destructive, so we copy make a copy
             line_img_cp = line_img.copy()
 
-            # FindContours is destructive, so we copy this image
+            # FindContours is destructive, so we copy make a copy
             arrow_mark_img_cp = arrow_mark_img.copy()
 
             # Should we use cv2.CHAIN_APPROX_NONE? or cv2.CHAIN_APPROX_SIMPLE? the former stores all points, the latter stores the basic ones
@@ -294,13 +309,11 @@ def analysis(clf, args, segm=False):
                         list_conv_defs_am.append(el[aux])
                         list_cont_am.append(newcnts_am[pos])
 
-            # obj = None
             mark = True
 
             if not list_conv_defs_l:
                 cv2.putText(analy, "Linea recta", (0, 140),
                             font, 0.5, (0, 0, 0), 1)
-                # obj = "mark"
 
             for pos, el in enumerate(list_conv_defs_l):
                 for i in range(el.shape[0]):
@@ -320,12 +333,10 @@ def analysis(clf, args, segm=False):
                         cv2.putText(analy, "Cruce 2 salidas", (0, 140),
                                     font, 0.5, (0, 0, 0), 1)
                         mark = False
-                        # obj = "arrow"
                     elif el.shape[0] == 4:
                         cv2.putText(analy, "Cruce 3 salidas", (0, 140),
                                     font, 0.5, (0, 0, 0), 1)
                         mark = False
-                        # obj = "arrow"
 
                     if args.genVideo and args.genVideo == 'chull':
                         # Draw convex hull and hole
@@ -349,82 +360,98 @@ def analysis(clf, args, segm=False):
 
             # print state_automata.state
             # if newcnts_am and state_automata.getState(obj):
-            if not mark:
-                for c in newcnts_am:
-                    ellipse = cv2.fitEllipse(c)
-                    center, axis, angle = ellipse
+            if not newcnts_am:
+                road_aut._reset()
+            else:
+                if not road_aut.getItem(mark):
+                    if newcnts_am:
+                        hu_mom = cv2.HuMoments(cv2.moments(arrow_mark_img_cp)).flatten()
+                        pred = neigh_clf.predict([hu_mom])
+                        if pred == 0:
+                            cv2.putText(analy, "Cruz", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        elif pred == 1:
+                            cv2.putText(analy, "Escalera", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        elif pred == 2:
+                            cv2.putText(analy, "Persona", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        elif pred == 3:
+                            cv2.putText(analy, "Telefono", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                else:
+                    for c in newcnts_am:
+                        cv2.putText(analy, "Flecha", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        ellipse = cv2.fitEllipse(c)
+                        center, axis, angle = ellipse
 
-                    # Axis angles, major, minor
-                    maj_ang = np.deg2rad(angle)
-                    min_ang = maj_ang + np.pi/2
+                        # Axis angles, major, minor
+                        maj_ang = np.deg2rad(angle)
+                        min_ang = maj_ang + np.pi/2
 
-                    # Axis lenghts
-                    major_axis = axis[1]
-                    minor_axis = axis[0]
+                        # Axis lenghts
+                        major_axis = axis[1]
+                        minor_axis = axis[0]
 
-                    # Lines of axis, first line and his complementary
-                    lineX1 = int(center[0]) + int(np.sin(maj_ang)*(major_axis/2))
-                    lineY1 = int(center[1]) - int(np.cos(maj_ang)*(major_axis/2))
-                    lineX2 = int(center[0]) - int(np.sin(maj_ang)*(major_axis/2))
-                    lineY2 = int(center[1]) + int(np.cos(maj_ang)*(major_axis/2))
+                        # Lines of axis, first line and his complementary
+                        lineX1 = int(center[0]) + int(np.sin(maj_ang)*(major_axis/2))
+                        lineY1 = int(center[1]) - int(np.cos(maj_ang)*(major_axis/2))
+                        lineX2 = int(center[0]) - int(np.sin(maj_ang)*(major_axis/2))
+                        lineY2 = int(center[1]) + int(np.cos(maj_ang)*(major_axis/2))
 
-                    if args.genVideo and args.genVideo == 'chull':
-                        linex1 = int(center[0]) + int(np.sin(min_ang)*(minor_axis/2))
-                        liney1 = int(center[1]) - int(np.cos(min_ang)*(minor_axis/2))
-                        cv2.line(analy, (int(center[0]), int(center[1])), (lineX1, lineY1), (0, 0, 255), 2)
-                        cv2.line(analy, (int(center[0]), int(center[1])), (linex1, liney1), (255, 0, 0), 2)
-                        cv2.circle(analy, (int(center[0]), int(center[1])), 3, (0, 0, 0), -1)
-                        cv2.ellipse(analy, ellipse, (0, 255, 0), 2)
-                        cv2.putText(analy, "Ang. elipse: "+str(angle), (0, 110),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        if args.genVideo and args.genVideo == 'chull':
+                            linex1 = int(center[0]) + int(np.sin(min_ang)*(minor_axis/2))
+                            liney1 = int(center[1]) - int(np.cos(min_ang)*(minor_axis/2))
+                            cv2.line(analy, (int(center[0]), int(center[1])), (lineX1, lineY1), (0, 0, 255), 2)
+                            cv2.line(analy, (int(center[0]), int(center[1])), (linex1, liney1), (255, 0, 0), 2)
+                            cv2.circle(analy, (int(center[0]), int(center[1])), 3, (0, 0, 0), -1)
+                            cv2.ellipse(analy, ellipse, (0, 255, 0), 2)
+                            cv2.putText(analy, "Ang. elipse: "+str(angle), (0, 110),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
-                    # Get coordinates of arrow pixels
-                    arrow = []
-                    for y, row in enumerate(arrow_mark_img_cp):
-                        for x, col in enumerate(row):
-                            if col == 255:
-                                arrow.append([x, y])
-                    angle360 = angle        # Initial angle in [0,180)
-                    if 45 <= angle <= 135:  # Arrow kind of horizontal -> cut in vertical
-                        # Divide arrow in two lists depending on X coordinate of the center
-                        left = [1 for px in arrow if px[0] < center[0]]
-                        right = [1 for px in arrow if px[0] > center[0]]
-                        if len(right) >= len(left):
-                            peak = (lineX1, lineY1)  # Arrow peak is the point in major axis 1
-                        else:
-                            peak = (lineX2, lineY2)  # Arrow peak is the point in major axis 2
-                            angle360 += 180          # Real angle in [0,360)
-                    else:  # Arrow kind of vertical -> cut in horizontal
-                        # Divide arrow in two lists depending on Y coordinate of the center
-                        up = [1 for px in arrow if px[1] < center[1]]
-                        down = [1 for px in arrow if px[1] > center[1]]
-                        if (len(up) >= len(down) and angle < 45) or (len(down) >= len(up) and angle > 135):
-                            peak = (lineX1, lineY1)  # Arrow peak is the point in major axis 1
-                        else:
-                            peak = (lineX2, lineY2)  # Arrow peak is the point in major axis 2
-                            angle360 += 180
+                        # Get coordinates of arrow pixels
+                        arrow = []
+                        for y, row in enumerate(arrow_mark_img_cp):
+                            for x, col in enumerate(row):
+                                if col == 255:
+                                    arrow.append([x, y])
+                        angle360 = angle        # Initial angle in [0,180)
+                        if 45 <= angle <= 135:  # Arrow kind of horizontal -> cut in vertical
+                            # Divide arrow in two lists depending on X coordinate of the center
+                            left = [1 for px in arrow if px[0] < center[0]]
+                            right = [1 for px in arrow if px[0] > center[0]]
+                            if len(right) >= len(left):
+                                peak = (lineX1, lineY1)  # Arrow peak is the point in major axis 1
+                            else:
+                                peak = (lineX2, lineY2)  # Arrow peak is the point in major axis 2
+                                angle360 += 180          # Real angle in [0,360)
+                        else:  # Arrow kind of vertical -> cut in horizontal
+                            # Divide arrow in two lists depending on Y coordinate of the center
+                            up = [1 for px in arrow if px[1] < center[1]]
+                            down = [1 for px in arrow if px[1] > center[1]]
+                            if (len(up) >= len(down) and angle < 45) or (len(down) >= len(up) and angle > 135):
+                                peak = (lineX1, lineY1)  # Arrow peak is the point in major axis 1
+                            else:
+                                peak = (lineX2, lineY2)  # Arrow peak is the point in major axis 2
+                                angle360 += 180
 
-                    angle360 = int(angle360)
+                        angle360 = int(angle360)
 
-                    if angle360 >= 337.5 or angle360 < 22.5:
-                        cv2.putText(analy, "Norte (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                    elif angle360 < 67.5:
-                        cv2.putText(analy, "Noreste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                    elif angle360 < 112.5:
-                        cv2.putText(analy, "Este (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                    elif angle360 < 157.5:
-                        cv2.putText(analy, "Sureste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                    elif angle360 < 202.5:
-                        cv2.putText(analy, "Sur (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                    elif angle360 < 247.5:
-                        cv2.putText(analy, "Suroeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                    elif angle360 < 292.5:
-                        cv2.putText(analy, "Oeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                    elif angle360 < 337.5:
-                        cv2.putText(analy, "Noroeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        if angle360 >= 337.5 or angle360 < 22.5:
+                            cv2.putText(analy, "Norte (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        elif angle360 < 67.5:
+                            cv2.putText(analy, "Noreste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        elif angle360 < 112.5:
+                            cv2.putText(analy, "Este (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        elif angle360 < 157.5:
+                            cv2.putText(analy, "Sureste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        elif angle360 < 202.5:
+                            cv2.putText(analy, "Sur (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        elif angle360 < 247.5:
+                            cv2.putText(analy, "Suroeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        elif angle360 < 292.5:
+                            cv2.putText(analy, "Oeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        elif angle360 < 337.5:
+                            cv2.putText(analy, "Noroeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
-                    cv2.line(analy, (int(peak[0]), int(peak[1])), (int(center[0]), int(center[1])), (0, 0, 255), 2)
-                    cv2.circle(analy, (int(peak[0]), int(peak[1])), 3, (0, 255, 0), -1)
+                        cv2.line(analy, (int(peak[0]), int(peak[1])), (int(center[0]), int(center[1])), (0, 0, 255), 2)
+                        cv2.circle(analy, (int(peak[0]), int(peak[1])), 3, (0, 255, 0), -1)
 
             left_border = line_img_cp[:, :10].copy()
             right_border = line_img_cp[:, 310:].copy()
@@ -480,7 +507,7 @@ def analysis(clf, args, segm=False):
                     cv2.imwrite(join(chull_dir, 'ChullImg'+str(count)+'.png'), analy)
 
             # compare key pressed with the ascii code of the character
-            key = cv2.waitKey(1000)
+            key = cv2.waitKey(10)
 
             # (n)ext image
             if (key & 0xFF) == ord('n'):
@@ -506,45 +533,66 @@ def analysis(clf, args, segm=False):
 
 
 def mark_train(args):
-    clf = training(args)
+    clf = training(mark=True, train_img_m='9999')
     marks = ['Cruz', 'Escalera', 'Persona', 'Telefono']
     mark_dir = 'TrainMark'
     train_data = []
     target_val = []
-    all_f = []
+    # all_f = []
     for idx, m in enumerate(marks):
         files = [join(mark_dir, m, 'chosen', f)
                  for f in listdir(join(mark_dir, m, 'chosen'))]
-        all_f.extend(files)
+        # all_f.extend(files)
         for i in files:
             frame = imread(i)
             frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            _, arrow_mark_img = segmentation(clf, frame_bgr, 0, args, segm=False)
+            _, arrow_mark_img = segmentation(clf, frame_bgr, 0, args, segm=False, mark=True)
             hu_mom = cv2.HuMoments(cv2.moments(arrow_mark_img)).flatten()
             train_data.append(hu_mom)
             target_val.append(idx)
 
-    shuffle(all_f)
+    # clf_arrow = training()
+    # files = [join(mark_dir, 'Flecha', 'chosen', f)
+    #          for f in listdir(join(mark_dir, 'Flecha', 'chosen'))]
+    # # all_f.extend(files)
+    # for i in files:
+    #     frame = imread(i)
+    #     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+    #     _, arrow_mark_img = segmentation(clf_arrow, frame_bgr, 0, args, segm=False, mark=True)
+    #     hu_mom = cv2.HuMoments(cv2.moments(arrow_mark_img)).flatten()
+    #     train_data.append(hu_mom)
+    #     target_val.append(4)
 
-    neigh = KNeighborsClassifier(n_neighbors=1)
+    # shuffle(all_f)
+
+    neigh = KNeighborsClassifier(n_neighbors=5)
     neigh.fit(train_data, target_val)
 
-    for i in all_f:
-        frame = imread(i)
-        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        _, arrow_mark_img = segmentation(clf, frame_bgr, 0, args, segm=True)
-        hu_mom = cv2.HuMoments(cv2.moments(arrow_mark_img)).flatten()
-        pred = neigh.predict([hu_mom])
-        if pred == 0:
-            cv2.putText(frame_bgr, "Cruz", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-        elif pred == 1:
-            cv2.putText(frame_bgr, "Escalera", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-        elif pred == 2:
-            cv2.putText(frame_bgr, "Persona", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-        elif pred == 3:
-            cv2.putText(frame_bgr, "Telefono", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-        cv2.imshow("Test", frame_bgr)
-        cv2.waitKey(1000)
+    # for i in all_f:
+    #     frame = imread(i)
+    #     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+    #     if i.startswith('TrainMark/Flecha'):
+    #         _, arrow_mark_img = segmentation(clf_arrow, frame_bgr, 0, args, segm=True, mark=True)
+    #     else:
+    #         _, arrow_mark_img = segmentation(clf, frame_bgr, 0, args, segm=True, mark=True)
+    #     hu_mom = cv2.HuMoments(cv2.moments(arrow_mark_img)).flatten()
+    #     pred = neigh.predict([hu_mom])
+    #     if pred == 0:
+    #         cv2.putText(frame_bgr, "Cruz", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+    #     elif pred == 1:
+    #         cv2.putText(frame_bgr, "Escalera", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+    #     elif pred == 2:
+    #         cv2.putText(frame_bgr, "Persona", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+    #     elif pred == 3:
+    #         cv2.putText(frame_bgr, "Telefono", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+    #     elif pred == 4:
+    #         cv2.putText(frame_bgr, "Flecha", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+
+    #     cv2.imshow("Test", frame_bgr)
+    #     cv2.waitKey(1000)
+
+    global neigh_clf
+    neigh_clf = neigh
 
 
 def gen_video(name, procedure):
@@ -607,16 +655,20 @@ def main(parser, args):
     if args.trainImg:
         train_img = args.trainImg
 
-    mark_train(args)
-    sys.exit()
     # Mark lots of images
     if args.mark:
         marking()
     elif args.segm:
-        clf = training(args)
+        print "Training K-nn classifier"
+        mark_train(args)
+        print "Analyzing video"
+        clf = training()
         analysis(clf, args, segm=True)
     elif args.analy:
-        clf = training(args)
+        print "Training K-nn classifier"
+        mark_train(args)
+        print "Analyzing video"
+        clf = training()
         analysis(clf, args)
 
     if args.genVideo:
