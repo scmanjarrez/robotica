@@ -8,7 +8,7 @@ from os.path import isfile, join
 from scipy.misc import imread, imsave
 from sklearn.neighbors.nearest_centroid import NearestCentroid
 from sklearn.neighbors import KNeighborsClassifier
-from random import shuffle
+from random import shuffle # noqa, disable flycheck warning
 
 import cv2
 import select_pixels as sel
@@ -57,7 +57,7 @@ class RoadAutomaton:
         self.state += 1
         return 0 if (self.state < 0) else 1
 
-    def getItem(self, state):
+    def getType(self, state):
         if state:
             return self.__decrease()
         else:
@@ -358,26 +358,23 @@ def analysis(clf, args, segm=False):
                         cv2.line(analy, start, end, [0, 255, 0], 2)
                         cv2.circle(analy, far, 3, [0, 0, 255], -1)
 
-            # print state_automata.state
-            # if newcnts_am and state_automata.getState(obj):
             if not newcnts_am:
                 road_aut._reset()
             else:
-                if not road_aut.getItem(mark):
-                    if newcnts_am:
-                        hu_mom = cv2.HuMoments(cv2.moments(arrow_mark_img_cp)).flatten()
-                        pred = neigh_clf.predict([hu_mom])
-                        if pred == 0:
-                            cv2.putText(analy, "Cruz", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                        elif pred == 1:
-                            cv2.putText(analy, "Escalera", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                        elif pred == 2:
-                            cv2.putText(analy, "Persona", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                        elif pred == 3:
-                            cv2.putText(analy, "Telefono", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                if not road_aut.getType(mark):
+                    hu_mom = cv2.HuMoments(cv2.moments(arrow_mark_img_cp)).flatten()
+                    pred = neigh_clf.predict([hu_mom])
+                    if pred == 0:
+                        cv2.putText(analy, "Cruz", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    elif pred == 1:
+                        cv2.putText(analy, "Escalera", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    elif pred == 2:
+                        cv2.putText(analy, "Persona", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    elif pred == 3:
+                        cv2.putText(analy, "Telefono", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                 else:
+                    cv2.putText(analy, "Flecha", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     for c in newcnts_am:
-                        cv2.putText(analy, "Flecha", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                         ellipse = cv2.fitEllipse(c)
                         center, axis, angle = ellipse
 
@@ -406,11 +403,7 @@ def analysis(clf, args, segm=False):
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
                         # Get coordinates of arrow pixels
-                        arrow = []
-                        for y, row in enumerate(arrow_mark_img_cp):
-                            for x, col in enumerate(row):
-                                if col == 255:
-                                    arrow.append([x, y])
+                        arrow = cv2.findNonZero(arrow_mark_img_cp)[:, 0, :]
                         angle360 = angle        # Initial angle in [0,180)
                         if 45 <= angle <= 135:  # Arrow kind of horizontal -> cut in vertical
                             # Divide arrow in two lists depending on X coordinate of the center
@@ -565,7 +558,7 @@ def mark_train(args):
 
     # shuffle(all_f)
 
-    neigh = KNeighborsClassifier(n_neighbors=5)
+    neigh = KNeighborsClassifier(n_neighbors=3)
     neigh.fit(train_data, target_val)
 
     # for i in all_f:
