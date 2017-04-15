@@ -9,16 +9,15 @@ from scipy.misc import imread, imsave
 from sklearn.neighbors.nearest_centroid import NearestCentroid
 from sklearn.neighbors import KNeighborsClassifier
 from random import shuffle # noqa, disable flycheck warning
-from sklearn.cross_validation import LeaveOneOut
-from sklearn.svm import SVC
+from sklearn.cross_validation import LeaveOneOut # noqa, disable flycheck warning
+from sklearn.decomposition import PCA # noqa, disable flycheck warning
+from sklearn.naive_bayes import GaussianNB # noqa, disable flycheck warning
 
 import cv2
 import select_pixels as sel
 import time # noqa, disable flycheck warning
 
-# from matplotlib import pyplot as plt
-# from mpl_toolkits.mplot3d import Axes3D
-# from mpl_toolkits.mplot3d import proj3d
+from matplotlib import pyplot as plt # noqa, disable flycheck warning
 
 video = 'video2017-3.avi'
 train_img = '576'
@@ -35,7 +34,7 @@ font = cv2.FONT_HERSHEY_SIMPLEX
 neigh_clf = None
 
 
-class RoadAutomaton:
+class TypeObjAutomaton:
     # recta==giro_izq==giro_dcha, cruce_2_vias==cruce_3_vias
     # States are -, 0 , +
     # On success increase state
@@ -64,6 +63,25 @@ class RoadAutomaton:
             return self.__decrease()
         else:
             return self.__increase()
+
+
+class MarkAutomaton:
+    # States are 0, 1, 2, 3
+    # Get the maximum state
+    def __init__(self):
+        self.state = [0, 0, 0, 0]
+        self.MARK = ['Cruz', 'Escalera', 'Persona', 'Telefono']
+
+    def _state(self):
+        return self.state
+
+    def _reset(self):
+        if not all(self.state):
+            self.state = [0, 0, 0, 0]
+
+    def getType(self, pred):
+        self.state[pred] += 1
+        return self.MARK[np.argmax(self.state)]
 
 
 def marking():
@@ -167,22 +185,6 @@ def training(mark=False, train_img_m=''):
                              np.ones(len(data_green[:]), dtype=int),
                              np.full(len(data_blue[:]), 2, dtype=int)])
 
-    # fig = plt.figure(figsize=(8, 8))
-    # ax = fig.add_subplot(111, projection='3d')
-    # plt.rcParams['legend.fontsize'] = 10
-
-    # data = [data_red, data_green, data_blue]
-    # colors_markers = ('red', 'green', 'blue')
-    # for pos in range(3):
-    #     ax.plot(data[pos][:, 0], data[pos][:, 1], data[pos][:, 2], '*',
-    #             markersize=5, color=colors_markers[pos], alpha=0.5, label=colors_markers[pos])
-
-    # plt.legend(loc='upper left')
-    # ax.set_xlim(0, 1)
-    # ax.set_ylim(0, 1)
-    # ax.set_zlim(0, 1)
-    # plt.show()
-
     clf = NearestCentroid()
     clf.fit(data, target)
     return clf
@@ -248,7 +250,8 @@ def analysis(clf, args, segm=False):
             make_dir(chull_dir)
 
     pause = False
-    road_aut = RoadAutomaton()
+    type_aut = TypeObjAutomaton()
+    mark_aut = MarkAutomaton()
     while(capture.isOpened()):
         if not pause:
             ret, frame = capture.read()
@@ -275,7 +278,7 @@ def analysis(clf, args, segm=False):
 
             # Removes small contours, i.e: small squares
             newcnts_l = [cnt for cnt in cnts_l if len(cnt) > 100]
-            newcnts_am = [cnt for cnt in cnts_am if len(cnt) > 50]
+            newcnts_am = [cnt for cnt in cnts_am if len(cnt) > 75]
 
             # DrawContours is destructive
             analy = frame.copy()[90:]
@@ -329,7 +332,6 @@ def analysis(clf, args, segm=False):
                         else:
                             cv2.putText(analy, "Giro dcha", (0, 140),
                                         font, 0.5, (0, 0, 0), 1)
-                        # obj = "mark"
 
                     elif el.shape[0] == 2 or el.shape[0] == 3:
                         cv2.putText(analy, "Cruce 2 salidas", (0, 140),
@@ -361,20 +363,15 @@ def analysis(clf, args, segm=False):
                         cv2.circle(analy, far, 3, [0, 0, 255], -1)
 
             if not newcnts_am:
-                road_aut._reset()
+                type_aut._reset()
+                mark_aut._reset()
             else:
-                if not road_aut.getType(mark):
-                    hu_mom = cv2.HuMoments(cv2.moments(arrow_mark_img_cp)).flatten()
-                    hu_mom2 = -np.sign(hu_mom)*np.log10(np.abs(hu_mom))
-                    pred = neigh_clf.predict([hu_mom2])
-                    if pred == 0:
-                        cv2.putText(analy, "Cruz", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                    elif pred == 1:
-                        cv2.putText(analy, "Escalera", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                    elif pred == 2:
-                        cv2.putText(analy, "Persona", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-                    elif pred == 3:
-                        cv2.putText(analy, "Telefono", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                if not type_aut.getType(mark):
+                    if len(newcnts_am) == 1:
+                        hu_mom = cv2.HuMoments(cv2.moments(newcnts_am[0])).flatten()
+                        # hu_mom2 = -np.sign(hu_mom)*np.log10(np.abs(hu_mom))
+                        pred = neigh_clf.predict([hu_mom])
+                        cv2.putText(analy, mark_aut.getType(pred[0]), (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                 else:
                     cv2.putText(analy, "Flecha", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     for c in newcnts_am:
@@ -532,7 +529,6 @@ def mark_train(args):
     clf = training(mark=True, train_img_m='9999')
     k_n = 1
     neigh = KNeighborsClassifier(n_neighbors=k_n)
-    svm = SVC()
 
     marks = ['Cruz', 'Escalera', 'Persona', 'Telefono']
     mark_dir = 'TrainMark'
@@ -549,10 +545,12 @@ def mark_train(args):
             frame = imread(i)
             frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             _, arrow_mark_img = segmentation(clf, frame_bgr, 0, args, segm=False, mark=True)
-            hu_mom = cv2.HuMoments(cv2.moments(arrow_mark_img)).flatten()
-            hu_mom2 = -np.sign(hu_mom)*np.log10(np.abs(hu_mom))
+            cnts, hier = cv2.findContours(arrow_mark_img, cv2.RETR_LIST,
+                                          cv2.CHAIN_APPROX_NONE)
+            cnts = [cnt for cnt in cnts if cv2.contourArea(cnt) > 75]
+            hu_mom = cv2.HuMoments(cv2.moments(cnts[0])).flatten()
             f.append(frame_bgr)
-            h.append(hu_mom2)
+            h.append(hu_mom)
             l.append(idx)
         all_frame.append(f)
         all_hu.append(h)
@@ -569,8 +567,8 @@ def mark_train(args):
     # fallo_persona = 0
     # fallo_telefono = 0
     # for train_idx, test_idx in loo:
-    #     svm.fit(all_hu[:, train_idx].reshape((s, 7)), labels[:, train_idx].reshape((s,)))
-    #     res = svm.predict(all_hu[:, test_idx].reshape(4, 7))
+    #     neigh.fit(all_hu[:, train_idx].reshape((s, 7)), labels[:, train_idx].reshape((s,)))
+    #     res = neigh.predict(all_hu[:, test_idx].reshape(4, 7))
     #     if res[0] != 0:
     #         fallo_cruz += 1
     #     if res[1] != 1:
@@ -591,9 +589,26 @@ def mark_train(args):
     fallo_escalera = 0
     fallo_persona = 0
     fallo_telefono = 0
-    svm.fit(all_hu.reshape((s, 7)), labels.reshape((s,)))
+
+    # pca = PCA(n_components=2)
+    # tr_data = pca.fit_transform(all_hu.reshape((s, 7)))
+    # tr_label = labels.reshape((s,))
+    # col = ['red', 'blue', 'green', 'black']
+    # plx = [[], [], [], []]
+    # ply = [[], [], [], []]
+    # for idx, el in enumerate(tr_data):
+    #     ps = tr_label[idx]
+    #     plx[ps].append(el[0])
+    #     ply[ps].append(el[1])
+    # for pos, p in enumerate(plx):
+    #     plt.scatter(p, ply[pos], label=marks[pos], color=col[pos])
+    # plt.legend()
+    # plt.show()
+    # sys.exit()
+
+    neigh.fit(all_hu.reshape((s, 7)), labels.reshape((s,)))
     for idx in range(100):
-        res = svm.predict(all_hu[:, idx].reshape(4, 7))
+        res = neigh.predict(all_hu[:, idx].reshape(4, 7))
         if res[0] != 0:
             fallo_cruz += 1
         if res[1] != 1:
@@ -612,7 +627,7 @@ def mark_train(args):
     # sys.exit()
 
     global neigh_clf
-    neigh_clf = svm
+    neigh_clf = neigh
 
 
 def gen_video(name, procedure):
