@@ -9,6 +9,8 @@ from scipy.misc import imread, imsave
 from sklearn.neighbors.nearest_centroid import NearestCentroid
 from sklearn.neighbors import KNeighborsClassifier
 from random import shuffle # noqa, disable flycheck warning
+from sklearn.cross_validation import LeaveOneOut
+from sklearn.svm import SVC
 
 import cv2
 import select_pixels as sel
@@ -363,7 +365,8 @@ def analysis(clf, args, segm=False):
             else:
                 if not road_aut.getType(mark):
                     hu_mom = cv2.HuMoments(cv2.moments(arrow_mark_img_cp)).flatten()
-                    pred = neigh_clf.predict([hu_mom])
+                    hu_mom2 = -np.sign(hu_mom)*np.log10(np.abs(hu_mom))
+                    pred = neigh_clf.predict([hu_mom2])
                     if pred == 0:
                         cv2.putText(analy, "Cruz", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     elif pred == 1:
@@ -527,65 +530,89 @@ def analysis(clf, args, segm=False):
 
 def mark_train(args):
     clf = training(mark=True, train_img_m='9999')
+    k_n = 1
+    neigh = KNeighborsClassifier(n_neighbors=k_n)
+    svm = SVC()
+
     marks = ['Cruz', 'Escalera', 'Persona', 'Telefono']
     mark_dir = 'TrainMark'
-    train_data = []
-    target_val = []
-    # all_f = []
+    all_frame = []
+    all_hu = []
+    labels = []
     for idx, m in enumerate(marks):
         files = [join(mark_dir, m, 'chosen', f)
                  for f in listdir(join(mark_dir, m, 'chosen'))]
-        # all_f.extend(files)
+        f = []
+        h = []
+        l = []
         for i in files:
             frame = imread(i)
             frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             _, arrow_mark_img = segmentation(clf, frame_bgr, 0, args, segm=False, mark=True)
             hu_mom = cv2.HuMoments(cv2.moments(arrow_mark_img)).flatten()
-            train_data.append(hu_mom)
-            target_val.append(idx)
+            hu_mom2 = -np.sign(hu_mom)*np.log10(np.abs(hu_mom))
+            f.append(frame_bgr)
+            h.append(hu_mom2)
+            l.append(idx)
+        all_frame.append(f)
+        all_hu.append(h)
+        labels.append(l)
 
-    # clf_arrow = training()
-    # files = [join(mark_dir, 'Flecha', 'chosen', f)
-    #          for f in listdir(join(mark_dir, 'Flecha', 'chosen'))]
-    # # all_f.extend(files)
-    # for i in files:
-    #     frame = imread(i)
-    #     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-    #     _, arrow_mark_img = segmentation(clf_arrow, frame_bgr, 0, args, segm=False, mark=True)
-    #     hu_mom = cv2.HuMoments(cv2.moments(arrow_mark_img)).flatten()
-    #     train_data.append(hu_mom)
-    #     target_val.append(4)
+    all_frame = np.array(all_frame)
+    all_hu = np.array(all_hu)
+    labels = np.array(labels)
 
-    # shuffle(all_f)
+    # loo = LeaveOneOut(100)
+    # s = 4*99
+    # fallo_cruz = 0
+    # fallo_escalera = 0
+    # fallo_persona = 0
+    # fallo_telefono = 0
+    # for train_idx, test_idx in loo:
+    #     svm.fit(all_hu[:, train_idx].reshape((s, 7)), labels[:, train_idx].reshape((s,)))
+    #     res = svm.predict(all_hu[:, test_idx].reshape(4, 7))
+    #     if res[0] != 0:
+    #         fallo_cruz += 1
+    #     if res[1] != 1:
+    #         fallo_escalera += 1
+    #     if res[2] != 2:
+    #         fallo_persona += 1
+    #     if res[3] != 3:
+    #         fallo_telefono += 1
 
-    neigh = KNeighborsClassifier(n_neighbors=3)
-    neigh.fit(train_data, target_val)
+    # print "K-neighbors: ", k_n
+    # print "% Acierto Cruz: ", 100-fallo_cruz
+    # print "% Acierto Escalera: ", 100-fallo_escalera
+    # print "% Acierto Persona: ", 100-fallo_persona
+    # print "% Acierto Telefono: ", 100-fallo_telefono
 
-    # for i in all_f:
-    #     frame = imread(i)
-    #     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-    #     if i.startswith('TrainMark/Flecha'):
-    #         _, arrow_mark_img = segmentation(clf_arrow, frame_bgr, 0, args, segm=True, mark=True)
-    #     else:
-    #         _, arrow_mark_img = segmentation(clf, frame_bgr, 0, args, segm=True, mark=True)
-    #     hu_mom = cv2.HuMoments(cv2.moments(arrow_mark_img)).flatten()
-    #     pred = neigh.predict([hu_mom])
-    #     if pred == 0:
-    #         cv2.putText(frame_bgr, "Cruz", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-    #     elif pred == 1:
-    #         cv2.putText(frame_bgr, "Escalera", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-    #     elif pred == 2:
-    #         cv2.putText(frame_bgr, "Persona", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-    #     elif pred == 3:
-    #         cv2.putText(frame_bgr, "Telefono", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-    #     elif pred == 4:
-    #         cv2.putText(frame_bgr, "Flecha", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+    s = 4*100
+    fallo_cruz = 0
+    fallo_escalera = 0
+    fallo_persona = 0
+    fallo_telefono = 0
+    svm.fit(all_hu.reshape((s, 7)), labels.reshape((s,)))
+    for idx in range(100):
+        res = svm.predict(all_hu[:, idx].reshape(4, 7))
+        if res[0] != 0:
+            fallo_cruz += 1
+        if res[1] != 1:
+            fallo_escalera += 1
+        if res[2] != 2:
+            fallo_persona += 1
+        if res[3] != 3:
+            fallo_telefono += 1
 
-    #     cv2.imshow("Test", frame_bgr)
-    #     cv2.waitKey(1000)
+    print "K-neighbors: ", k_n
+    print "% Acierto Cruz: ", 100-fallo_cruz
+    print "% Acierto Escalera: ", 100-fallo_escalera
+    print "% Acierto Persona: ", 100-fallo_persona
+    print "% Acierto Telefono: ", 100-fallo_telefono
+
+    # sys.exit()
 
     global neigh_clf
-    neigh_clf = neigh
+    neigh_clf = svm
 
 
 def gen_video(name, procedure):
