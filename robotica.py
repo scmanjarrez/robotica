@@ -3,35 +3,42 @@ import argparse
 import numpy as np
 import re
 import sys
+import time # noqa, disable flycheck warning
+
+from matplotlib import pyplot as plt # noqa, disable flycheck warning
 from os import listdir, mkdir
 from os.path import isfile, join
 from scipy.misc import imread, imsave
 from sklearn.neighbors.nearest_centroid import NearestCentroid
 from sklearn.neighbors import KNeighborsClassifier
-from random import shuffle # noqa, disable flycheck warning
 from sklearn.cross_validation import LeaveOneOut # noqa, disable flycheck warning
 from sklearn.decomposition import PCA # noqa, disable flycheck warning
-from sklearn.naive_bayes import GaussianNB # noqa, disable flycheck warning
 
 import cv2
 import select_pixels as sel
-import time # noqa, disable flycheck warning
 
-from matplotlib import pyplot as plt # noqa, disable flycheck warning
 
-video = 'video2017-3.avi'
-train_img = '576'
+VIDEO = 'video2017-3.avi'
+TRAIN_IMG = '576'
 
-train_dir = 'TrainFrames'
-segm_dir = 'SegmFrames'
-norm_dir = 'NormFrames'
-analy_dir = 'AnalyFrames'
-chull_dir = 'ChullFrames'
-vid_dir = 'OutputVideos'
+TRAIN_DIR = 'TrainFrames'
+SEGM_DIR = 'SegmFrames'
+NORM_DIR = 'NormFrames'
+ANALY_DIR = 'AnalyFrames'
+CHULL_DIR = 'ChullFrames'
+VID_DIR = 'OutputVideos'
+MARK_DIR = 'TrainMark'
 
-font = cv2.FONT_HERSHEY_SIMPLEX
+MARKS = ['Cruz', 'Escalera', 'Persona', 'Telefono']
+
+FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 neigh_clf = None
+pca = None
+col = None
+marks = None
+plx = None
+ply = None
 
 
 class TypeObjAutomaton:
@@ -70,7 +77,6 @@ class MarkAutomaton:
     # Get the maximum state
     def __init__(self):
         self.state = [0, 0, 0, 0]
-        self.MARK = ['Cruz', 'Escalera', 'Persona', 'Telefono']
 
     def _state(self):
         return self.state
@@ -81,14 +87,14 @@ class MarkAutomaton:
 
     def getType(self, pred):
         self.state[pred] += 1
-        return self.MARK[np.argmax(self.state)]
+        return MARKS[np.argmax(self.state)]
 
 
 def marking():
-    capture = cv2.VideoCapture(video)
+    capture = cv2.VideoCapture(VIDEO)
     count = 0
 
-    make_dir(train_dir)
+    make_dir(TRAIN_DIR)
 
     pause = False
     while(capture.isOpened()):
@@ -118,8 +124,8 @@ def marking():
                 # mark training pixels
                 mark_img = sel.select_fg_bg(im_rgb)
 
-                imsave(join(train_dir, 'OriginalImg'+str(count)+'.png'), im_rgb)
-                imsave(join(train_dir, 'TrainingImg'+str(count)+'.png'), mark_img)
+                imsave(join(TRAIN_DIR, 'OriginalImg'+str(count)+'.png'), im_rgb)
+                imsave(join(TRAIN_DIR, 'TrainingImg'+str(count)+'.png'), mark_img)
 
             # (q)uit program
             if (key & 0xFF) == ord('q'):
@@ -142,15 +148,15 @@ def marking():
 # mark and train_img_m params in case of training knn classifier (marks)
 # train with a different training image
 def training(mark=False, train_img_m=''):
-    make_dir(norm_dir)
+    make_dir(NORM_DIR)
 
     # Height x Width x channel
     if mark:
-        orig_img = imread(join(train_dir, 'OriginalImg'+train_img_m+'.png'))
-        mark_img = imread(join(train_dir, 'TrainingImg'+train_img_m+'.png'))
+        orig_img = imread(join(TRAIN_DIR, 'OriginalImg'+train_img_m+'.png'))
+        mark_img = imread(join(TRAIN_DIR, 'TrainingImg'+train_img_m+'.png'))
     else:
-        orig_img = imread(join(train_dir, 'OriginalImg'+train_img+'.png'))
-        mark_img = imread(join(train_dir, 'TrainingImg'+train_img+'.png'))
+        orig_img = imread(join(TRAIN_DIR, 'OriginalImg'+TRAIN_IMG+'.png'))
+        mark_img = imread(join(TRAIN_DIR, 'TrainingImg'+TRAIN_IMG+'.png'))
 
     # Normalization: all = R+G+B, R = R/all, G = G/all, B = B/all
     # [[[1, 2, 3],                 [[[1, 4],                                     [[[1/6 , 4/15],                      [[[1/6 , 2/6 , 3/6 ],
@@ -165,7 +171,7 @@ def training(mark=False, train_img_m=''):
     #  [[5, 6, 7],                  [[3, 6],                                      [[3/6 , 6/15],                       [[5/18, 6/18, 7/18],
     #   [8, 9, 0]]]                  [4, 6],                                       [4/15, 6/21],                        [8/17, 9/17, 0/17]]]
     #                                [7, 0]]]                                      [7/18, 0/17]]]
-    img_norm = np.rollaxis((np.rollaxis(orig_img, 2)+0.0)/np.sum(orig_img, 2), 0, 3)
+    img_norm = np.rollaxis((np.rollaxis(orig_img, 2)+0.1)/(np.sum(orig_img, 2)+0.1), 0, 3)
 
     # Get marked points from original image
     # np.equal(markImg, (255, 0, 0) --> X*Y*3
@@ -200,10 +206,10 @@ def segmentation(clf, frame, count, args, segm, mark=False):
         shape = frame.shape  # Segm all
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Segm all
 
-    img_norm = np.rollaxis((np.rollaxis(frame_rgb, 2)+0.0)/np.sum(frame_rgb, 2), 0, 3)
+    img_norm = np.rollaxis((np.rollaxis(frame_rgb, 2)+0.1)/(np.sum(frame_rgb, 2)+0.1), 0, 3)
 
     if args.genVideo and args.genVideo == 'norm':
-        imsave(join(norm_dir, 'Norm'+str(count)+'.png'), img_norm*255)
+        imsave(join(NORM_DIR, 'Norm'+str(count)+'.png'), img_norm*255)
 
     # Reshape in order to reduce the 3-dimensional array to 1-dimensional (needed for predict)
     reshape = img_norm.reshape(shape[0]*shape[1], 3)
@@ -224,7 +230,7 @@ def segmentation(clf, frame, count, args, segm, mark=False):
 
     if args.genVideo:
         if args.genVideo == 'segm':
-            cv2.imwrite(join(segm_dir, 'SegmImg'+str(count)+'.png'), segm_img)
+            cv2.imwrite(join(SEGM_DIR, 'SegmImg'+str(count)+'.png'), segm_img)
 
     # Image with the line in white
     line_img = (reshape_back == 2).astype(np.uint8)*255
@@ -236,18 +242,21 @@ def segmentation(clf, frame, count, args, segm, mark=False):
 
 
 def analysis(clf, args, segm=False):
-    capture = cv2.VideoCapture(video)
+    if VIDEO == '0':
+        capture = cv2.VideoCapture(0)
+    else:
+        capture = cv2.VideoCapture(VIDEO)
     count = 0
 
     if args.genVideo:
         if args.genVideo == 'segm':
-            make_dir(segm_dir)
+            make_dir(SEGM_DIR)
         elif args.genVideo == 'norm':
-            make_dir(norm_dir)
+            make_dir(NORM_DIR)
         elif args.genVideo == 'analy':
-            make_dir(analy_dir)
+            make_dir(ANALY_DIR)
         elif args.genVideo == 'chull':
-            make_dir(chull_dir)
+            make_dir(CHULL_DIR)
 
     pause = False
     type_aut = TypeObjAutomaton()
@@ -257,6 +266,9 @@ def analysis(clf, args, segm=False):
             ret, frame = capture.read()
         # if ret and not count % 24:
         if ret:
+            # if video == '0':
+            #     ret = capture.set(3, 340)
+            #     ret = capture.set(240)
             cv2.imshow('Original', frame)
 
             line_img, arrow_mark_img = segmentation(clf, frame, count, args, segm)
@@ -318,7 +330,7 @@ def analysis(clf, args, segm=False):
 
             if not list_conv_defs_l:
                 cv2.putText(analy, "Linea recta", (0, 140),
-                            font, 0.5, (0, 0, 0), 1)
+                            FONT, 0.5, (0, 0, 0), 1)
 
             for pos, el in enumerate(list_conv_defs_l):
                 for i in range(el.shape[0]):
@@ -328,18 +340,18 @@ def analysis(clf, args, segm=False):
                         slope = vy/vx
                         if slope > 0:
                             cv2.putText(analy, "Giro izq", (0, 140),
-                                        font, 0.5, (0, 0, 0), 1)
+                                        FONT, 0.5, (0, 0, 0), 1)
                         else:
                             cv2.putText(analy, "Giro dcha", (0, 140),
-                                        font, 0.5, (0, 0, 0), 1)
+                                        FONT, 0.5, (0, 0, 0), 1)
 
                     elif el.shape[0] == 2 or el.shape[0] == 3:
                         cv2.putText(analy, "Cruce 2 salidas", (0, 140),
-                                    font, 0.5, (0, 0, 0), 1)
+                                    FONT, 0.5, (0, 0, 0), 1)
                         mark = False
                     elif el.shape[0] == 4:
                         cv2.putText(analy, "Cruce 3 salidas", (0, 140),
-                                    font, 0.5, (0, 0, 0), 1)
+                                    FONT, 0.5, (0, 0, 0), 1)
                         mark = False
 
                     if args.genVideo and args.genVideo == 'chull':
@@ -371,7 +383,22 @@ def analysis(clf, args, segm=False):
                         hu_mom = cv2.HuMoments(cv2.moments(newcnts_am[0])).flatten()
                         # hu_mom2 = -np.sign(hu_mom)*np.log10(np.abs(hu_mom))
                         pred = neigh_clf.predict([hu_mom])
-                        cv2.putText(analy, mark_aut.getType(pred[0]), (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        if pred == 0:
+                            cv2.putText(analy, "Cruz", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        elif pred == 1:
+                            cv2.putText(analy, "Escalera", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        elif pred == 2:
+                            cv2.putText(analy, "Persona", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                        elif pred == 3:
+                            cv2.putText(analy, "Telefono", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+
+                        # pr_pca = pca.transform(hu_mom.reshape(1, -1))
+                        # for pos, p in enumerate(plx):
+                        #     plt.scatter(p, ply[pos], label=marks[pos], color=col[pos])
+                        #     plt.scatter(pr_pca[0, 0], pr_pca[0, 1], label="ToPredict", color="cyan")
+                        # plt.legend()
+                        # plt.show()
+                        # cv2.putText(analy, mark_aut.getType(pred[0]), (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                 else:
                     cv2.putText(analy, "Flecha", (0, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     for c in newcnts_am:
@@ -495,9 +522,9 @@ def analysis(clf, args, segm=False):
 
             if args.genVideo:
                 if args.genVideo == 'analy':
-                    cv2.imwrite(join(analy_dir, 'AnalyImg'+str(count)+'.png'), analy)
+                    cv2.imwrite(join(ANALY_DIR, 'AnalyImg'+str(count)+'.png'), analy)
                 elif args.genVideo == 'chull':
-                    cv2.imwrite(join(chull_dir, 'ChullImg'+str(count)+'.png'), analy)
+                    cv2.imwrite(join(CHULL_DIR, 'ChullImg'+str(count)+'.png'), analy)
 
             # compare key pressed with the ascii code of the character
             key = cv2.waitKey(10)
@@ -526,19 +553,15 @@ def analysis(clf, args, segm=False):
 
 
 def mark_train(args):
-    clf = training(mark=True, train_img_m='9999')
-    k_n = 1
-    neigh = KNeighborsClassifier(n_neighbors=k_n)
+    global col, plx, ply, pca, neigh_clf
 
-    marks = ['Cruz', 'Escalera', 'Persona', 'Telefono']
-    mark_dir = 'TrainMark'
-    all_frame = []
+    clf = training(mark=True, train_img_m='9999')
+
     all_hu = []
     labels = []
-    for idx, m in enumerate(marks):
-        files = [join(mark_dir, m, 'chosen', f)
-                 for f in listdir(join(mark_dir, m, 'chosen'))]
-        f = []
+    for idx, m in enumerate(MARKS):
+        files = [join(MARK_DIR, m, 'chosen', f)
+                 for f in listdir(join(MARK_DIR, m, 'chosen'))]
         h = []
         l = []
         for i in files:
@@ -549,46 +572,50 @@ def mark_train(args):
                                           cv2.CHAIN_APPROX_NONE)
             cnts = [cnt for cnt in cnts if cv2.contourArea(cnt) > 75]
             hu_mom = cv2.HuMoments(cv2.moments(cnts[0])).flatten()
-            f.append(frame_bgr)
             h.append(hu_mom)
             l.append(idx)
-        all_frame.append(f)
         all_hu.append(h)
         labels.append(l)
 
-    all_frame = np.array(all_frame)
     all_hu = np.array(all_hu)
+    # with open('dataset.rob', 'wb') as f:
+    #     np.savetxt(f, all_hu.reshape(400, 7))
     labels = np.array(labels)
 
-    # loo = LeaveOneOut(100)
-    # s = 4*99
-    # fallo_cruz = 0
-    # fallo_escalera = 0
-    # fallo_persona = 0
-    # fallo_telefono = 0
-    # for train_idx, test_idx in loo:
-    #     neigh.fit(all_hu[:, train_idx].reshape((s, 7)), labels[:, train_idx].reshape((s,)))
-    #     res = neigh.predict(all_hu[:, test_idx].reshape(4, 7))
-    #     if res[0] != 0:
-    #         fallo_cruz += 1
-    #     if res[1] != 1:
-    #         fallo_escalera += 1
-    #     if res[2] != 2:
-    #         fallo_persona += 1
-    #     if res[3] != 3:
-    #         fallo_telefono += 1
+    q_n = 1
+    cov_list = np.cov(all_hu.reshape(400, 7).T)
+    neigh = KNeighborsClassifier(n_neighbors=q_n, weights='distance',
+                                 metric='mahalanobis', metric_params={'V': cov_list})
 
-    # print "K-neighbors: ", k_n
-    # print "% Acierto Cruz: ", 100-fallo_cruz
-    # print "% Acierto Escalera: ", 100-fallo_escalera
-    # print "% Acierto Persona: ", 100-fallo_persona
-    # print "% Acierto Telefono: ", 100-fallo_telefono
-
-    s = 4*100
+    loo = LeaveOneOut(100)
+    s = 4*99
     fallo_cruz = 0
     fallo_escalera = 0
     fallo_persona = 0
     fallo_telefono = 0
+    for train_idx, test_idx in loo:
+        neigh.fit(all_hu[:, train_idx].reshape((s, 7)), labels[:, train_idx].reshape((s,)))
+        res = neigh.predict(all_hu[:, test_idx].reshape(4, 7))
+        if res[0] != 0:
+            fallo_cruz += 1
+        if res[1] != 1:
+            fallo_escalera += 1
+        if res[2] != 2:
+            fallo_persona += 1
+        if res[3] != 3:
+            fallo_telefono += 1
+
+    print "q-NN: ", q_n
+    print "Acierto Cruz     (%): ", 100-fallo_cruz
+    print "Acierto Escalera (%): ", 100-fallo_escalera
+    print "Acierto Persona  (%): ", 100-fallo_persona
+    print "Acierto Telefono (%): ", 100-fallo_telefono
+
+    # s = 4*100
+    # fallo_cruz = 0
+    # fallo_escalera = 0
+    # fallo_persona = 0
+    # fallo_telefono = 0
 
     # pca = PCA(n_components=2)
     # tr_data = pca.fit_transform(all_hu.reshape((s, 7)))
@@ -606,42 +633,39 @@ def mark_train(args):
     # plt.show()
     # sys.exit()
 
-    neigh.fit(all_hu.reshape((s, 7)), labels.reshape((s,)))
-    for idx in range(100):
-        res = neigh.predict(all_hu[:, idx].reshape(4, 7))
-        if res[0] != 0:
-            fallo_cruz += 1
-        if res[1] != 1:
-            fallo_escalera += 1
-        if res[2] != 2:
-            fallo_persona += 1
-        if res[3] != 3:
-            fallo_telefono += 1
+    # neigh.fit(all_hu.reshape((s, 7)), labels.reshape((s,)))
+    # for idx in range(100):
+    #     res = neigh.predict(all_hu[:, idx].reshape(4, 7))
+    #     if res[0] != 0:
+    #         fallo_cruz += 1
+    #     if res[1] != 1:
+    #         fallo_escalera += 1
+    #     if res[2] != 2:
+    #         fallo_persona += 1
+    #     if res[3] != 3:
+    #         fallo_telefono += 1
 
-    print "K-neighbors: ", k_n
-    print "% Acierto Cruz: ", 100-fallo_cruz
-    print "% Acierto Escalera: ", 100-fallo_escalera
-    print "% Acierto Persona: ", 100-fallo_persona
-    print "% Acierto Telefono: ", 100-fallo_telefono
+    # print "K-neighbors: ", k_n
+    # print "% Acierto Cruz: ", 100-fallo_cruz
+    # print "% Acierto Escalera: ", 100-fallo_escalera
+    # print "% Acierto Persona: ", 100-fallo_persona
+    # print "% Acierto Telefono: ", 100-fallo_telefono
 
-    # sys.exit()
-
-    global neigh_clf
     neigh_clf = neigh
 
 
 def gen_video(name, procedure):
-    make_dir(vid_dir)
+    make_dir(VID_DIR)
 
     aux_dir = None
     if procedure == 'segm':
-        aux_dir = segm_dir
+        aux_dir = SEGM_DIR
     elif procedure == 'norm':
-        aux_dir = norm_dir
+        aux_dir = NORM_DIR
     elif procedure == 'analy':
-        aux_dir = analy_dir
+        aux_dir = ANALY_DIR
     elif procedure == 'chull':
-        aux_dir = chull_dir
+        aux_dir = CHULL_DIR
 
     images = [f for f in listdir(aux_dir) if isfile(join(aux_dir, f))]
 
@@ -654,7 +678,7 @@ def gen_video(name, procedure):
 
     height, width, layers = aux.shape
 
-    video = cv2.VideoWriter(join(vid_dir, name+'.avi'), cv2.cv.CV_FOURCC('M', 'P', '4', '2'), 1.0, (width, height))
+    video = cv2.VideoWriter(join(VID_DIR, name+'.avi'), cv2.cv.CV_FOURCC('M', 'P', '4', '2'), 1.0, (width, height))
 
     for img in images:
         video.write(cv2.imread(join(aux_dir, img)))
@@ -677,32 +701,31 @@ def make_dir(dirName):
     try:
         mkdir(dirName)
     except OSError:
-        # print "Directory already created."
         pass
 
 
 def main(parser, args):
-    global video, train_img
+    global VIDEO, TRAIN_IMG
 
     if args.video:
-        video = args.video
+        VIDEO = args.video
 
     if args.trainImg:
-        train_img = args.trainImg
+        TRAIN_IMG = args.trainImg
 
     # Mark lots of images
     if args.mark:
         marking()
     elif args.segm:
-        print "Training K-nn classifier"
+        print "Training q-NN classifier..."
         mark_train(args)
-        print "Analyzing video"
+        print "Starting video analysis..."
         clf = training()
         analysis(clf, args, segm=True)
     elif args.analy:
-        print "Training K-nn classifier"
+        print "Training q-NN classifier..."
         mark_train(args)
-        print "Analyzing video"
+        print "Starting video analysis..."
         clf = training()
         analysis(clf, args)
 
