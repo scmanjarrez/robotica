@@ -30,6 +30,7 @@ VID_DIR = 'OutputVideos'
 MARK_DIR = 'TrainMark'
 
 MARKS = ['Cruz', 'Escalera', 'Persona', 'Telefono']
+COLORS = ['red', 'blue', 'green', 'black']
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -394,7 +395,7 @@ def analysis(clf, args, segm=False):
 
                         # pr_pca = pca.transform(hu_mom.reshape(1, -1))
                         # for pos, p in enumerate(plx):
-                        #     plt.scatter(p, ply[pos], label=marks[pos], color=col[pos])
+                        #     plt.scatter(p, ply[pos], label=MARKS[pos], color=COLORS[pos])
                         #     plt.scatter(pr_pca[0, 0], pr_pca[0, 1], label="ToPredict", color="cyan")
                         # plt.legend()
                         # plt.show()
@@ -553,7 +554,7 @@ def analysis(clf, args, segm=False):
 
 
 def mark_train(args):
-    global col, plx, ply, pca, neigh_clf
+    global plx, ply, pca, neigh_clf
 
     clf = training(mark=True, train_img_m='9999')
 
@@ -611,27 +612,26 @@ def mark_train(args):
     print "Acierto Persona  (%): ", 100-fallo_persona
     print "Acierto Telefono (%): ", 100-fallo_telefono
 
-    # s = 4*100
-    # fallo_cruz = 0
-    # fallo_escalera = 0
-    # fallo_persona = 0
-    # fallo_telefono = 0
+    s = 4*100
+    fallo_cruz = 0
+    fallo_escalera = 0
+    fallo_persona = 0
+    fallo_telefono = 0
 
-    # pca = PCA(n_components=2)
-    # tr_data = pca.fit_transform(all_hu.reshape((s, 7)))
-    # tr_label = labels.reshape((s,))
-    # col = ['red', 'blue', 'green', 'black']
-    # plx = [[], [], [], []]
-    # ply = [[], [], [], []]
-    # for idx, el in enumerate(tr_data):
-    #     ps = tr_label[idx]
-    #     plx[ps].append(el[0])
-    #     ply[ps].append(el[1])
-    # for pos, p in enumerate(plx):
-    #     plt.scatter(p, ply[pos], label=marks[pos], color=col[pos])
-    # plt.legend()
-    # plt.show()
-    # sys.exit()
+    pca = PCA(n_components=2)
+    tr_data = pca.fit_transform(all_hu.reshape((s, 7)))
+    tr_label = labels.reshape((s,))
+    plx = [[], [], [], []]
+    ply = [[], [], [], []]
+    for idx, el in enumerate(tr_data):
+        ps = tr_label[idx]
+        plx[ps].append(el[0])
+        ply[ps].append(el[1])
+    for pos, p in enumerate(plx):
+        plt.scatter(p, ply[pos], label=MARKS[pos], color=COLORS[pos])
+    plt.legend()
+    plt.show()
+    sys.exit()
 
     # neigh.fit(all_hu.reshape((s, 7)), labels.reshape((s,)))
     # for idx in range(100):
