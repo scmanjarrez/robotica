@@ -20,9 +20,13 @@ class BrainTestNavigator(Brain):
     NO_ERROR = 0
 
     NOLINE = False
+    count_elipse = 0
     count_l = 0
     count_r = 0
     count_e = 0
+    speed_t = 1
+    speed_f = 1
+    MAX = 28
 
     pos = [None, None]
     OBS = False
@@ -36,7 +40,7 @@ class BrainTestNavigator(Brain):
         frontAve = sum(s.value for s in self.robot.sonar[0]['front-all']) / 6.0
         # print "Frente: ", frontAve
         if frontAve < 7:
-            print "****Obstacle found****"
+            print "****Obstacle found, front sensors****"
             self.OBS = True
             self.move(0, 0.5)
 
@@ -45,6 +49,9 @@ class BrainTestNavigator(Brain):
             self.count_l = 0
             self.count_r = 0
             self.count_e = 0
+            self.count_elipse = 0
+            self.speed_t = 1
+            self.speed_f = 0.5
             if (1 >= lineDistance / 10 > 0.6):
                 self.move(self.NO_FORWARD, self.HARD_LEFT)
             elif (0.6 >= lineDistance / 10 > 0.3):
@@ -62,16 +69,13 @@ class BrainTestNavigator(Brain):
 
         else:
             if self.OBS:
-                # print "****Obstacle found****, no line"
-                right = min([s.distance() for s in self.robot.range["right"]])
-                # print "Right: ", right
-                if right < 1:
+                print "****Obstacle found, right sensors****"
+                right = sum([s.distance() for s in self.robot.range[5, 6, 7]]) / 3.0
+                if right < 4:
                     self.move(0.3, 0)
                 else:
                     self.move(0, -0.7)
-
             else:
-                print "No line found, count(l, r): ", self.count_l, self.count_r
                 if self.count_l < 14:
                     self.move(0, 0.5)
                     self.count_l += 1
@@ -82,11 +86,13 @@ class BrainTestNavigator(Brain):
                     self.move(0, 0.5)
                     self.count_e += 1
                 else:
-                    self.move(1, 0)
-                    self.count_l = 0
-                    self.count_r = 0
-                    self.count_e = 0
-
+                    if self.count_elipse < self.MAX:
+                        self.move(self.speed_f, self.speed_t)
+                        self.count_elipse += 1
+                    else:
+                        self.MAX = (1/self.speed_t)**2 * 14
+                        self.speed_t -= 0.1
+                        self.count_elipse = 0
 
 def INIT(engine):
     assert (engine.robot.requires("range-sensor") and
