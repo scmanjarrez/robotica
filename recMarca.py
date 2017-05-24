@@ -65,6 +65,14 @@ def training(mark=False, train_img_m=''):
                              np.ones(len(data_green[:]), dtype=int),
                              np.full(len(data_blue[:]), 2, dtype=int)])
 
+    # with open('training.data', 'wb') as f:
+    #     np.save(f, data)
+    # sys.exit()
+
+    # with open('training.target', 'wb') as f:
+    #     np.save(f, target)
+    # sys.exit()
+
     clf = NearestCentroid()
     clf.fit(data, target)
     return clf
@@ -412,7 +420,14 @@ def mark_train(args):
         labels.append(l)
 
     all_hu = np.array(all_hu)
+    # with open('moments.hu', 'wb') as f:
+    #     np.save(f, all_hu)
+    # sys.exit()
+
     labels = np.array(labels)
+    # with open('moments.labels', 'wb') as f:
+    #     np.save(f, labels)
+    # sys.exit()
 
     q_n = 1
     if args.img200:
