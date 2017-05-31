@@ -3,10 +3,10 @@ import numpy as np
 import re
 import sys
 
-from matplotlib import pyplot as plt # noqa, disable flycheck warning
-from os import listdir, mkdir
-from os.path import isfile, join
-from scipy.misc import imread, imsave
+# from matplotlib import pyplot as plt # noqa, disable flycheck warning
+# from os import listdir, mkdir
+# from os.path import isfile, join
+# from scipy.misc import imread, imsave
 from sklearn.neighbors.nearest_centroid import NearestCentroid
 from sklearn.neighbors import KNeighborsClassifier
 
@@ -80,6 +80,8 @@ def segmentation(clf, frame):
 
 def analysis(clf):
     capture = cv2.VideoCapture(0)
+    capture.set(3, 320)
+    capture.set(4, 240)
     count = 0
 
     pause = False
@@ -87,6 +89,7 @@ def analysis(clf):
     while(capture.isOpened()):
         if not pause:
             ret, frame = capture.read()
+
         # if ret and not count % 24:
         if ret:
             cv2.imshow('Original', frame)
@@ -304,7 +307,7 @@ def mark_train():
     labels = np.load('moments.labels')
 
     q_n = 1
-    cov_list = np.cov(all_hu.T)
+    cov_list = np.cov(all_hu.reshape(400, 7).T)
     neigh = KNeighborsClassifier(n_neighbors=q_n, weights='distance',
                                  metric='mahalanobis', metric_params={'V': cov_list})
 
