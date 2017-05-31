@@ -431,7 +431,10 @@ def analysis(clf, args, segm=False):
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
                         # Get coordinates of arrow pixels
-                        arrow = cv2.findNonZero(arrow_mark_img_cp)[:, 0, :]
+                        # arrow = cv2.findNonZero(arrow_mark_img_cp)[:, 0, :]
+                        idx = np.where(arrow_mark_img_cp != 0)
+                        size_idx = len(idx[0])
+                        arrow = np.array([[idx[1][idy], idx[0][idy]] for idy in range(size_idx)])
                         angle360 = angle        # Initial angle in [0,180)
                         if 45 <= angle <= 135:  # Arrow kind of horizontal -> cut in vertical
                             # Divide arrow in two lists depending on X coordinate of the center
@@ -612,26 +615,26 @@ def mark_train(args):
     print "Acierto Persona  (%): ", 100-fallo_persona
     print "Acierto Telefono (%): ", 100-fallo_telefono
 
-    s = 4*100
-    fallo_cruz = 0
-    fallo_escalera = 0
-    fallo_persona = 0
-    fallo_telefono = 0
+    # s = 4*100
+    # fallo_cruz = 0
+    # fallo_escalera = 0
+    # fallo_persona = 0
+    # fallo_telefono = 0
 
-    pca = PCA(n_components=2)
-    tr_data = pca.fit_transform(all_hu.reshape((s, 7)))
-    tr_label = labels.reshape((s,))
-    plx = [[], [], [], []]
-    ply = [[], [], [], []]
-    for idx, el in enumerate(tr_data):
-        ps = tr_label[idx]
-        plx[ps].append(el[0])
-        ply[ps].append(el[1])
-    for pos, p in enumerate(plx):
-        plt.scatter(p, ply[pos], label=MARKS[pos], color=COLORS[pos])
-    plt.legend()
-    plt.show()
-    sys.exit()
+    # pca = PCA(n_components=2)
+    # tr_data = pca.fit_transform(all_hu.reshape((s, 7)))
+    # tr_label = labels.reshape((s,))
+    # plx = [[], [], [], []]
+    # ply = [[], [], [], []]
+    # for idx, el in enumerate(tr_data):
+    #     ps = tr_label[idx]
+    #     plx[ps].append(el[0])
+    #     ply[ps].append(el[1])
+    # for pos, p in enumerate(plx):
+    #     plt.scatter(p, ply[pos], label=MARKS[pos], color=COLORS[pos])
+    # plt.legend()
+    # plt.show()
+    # sys.exit()
 
     # neigh.fit(all_hu.reshape((s, 7)), labels.reshape((s,)))
     # for idx in range(100):
