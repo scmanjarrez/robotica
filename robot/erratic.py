@@ -3,7 +3,6 @@ import numpy as np
 from scipy.misc import imread
 from os import mkdir
 from os.path import join
-import math
 from sklearn.neighbors.nearest_centroid import NearestCentroid
 from sklearn.neighbors import KNeighborsClassifier
 
@@ -77,13 +76,12 @@ class PIDController:
                 mp = np.mean(m[:, :, :], axis=0, dtype=np.int32)
                 all_mp_fringe.extend(mp.tolist())
         if all_mp_fringe:
-            line_point = all_mp_fringe[np.argmin([abs(160 - mp[0]) for mp in all_mp_fringe])]
+            line_point = all_mp_fringe[np.argmin([abs(160 - mpp[0]) for mpp in all_mp_fringe])]
             self.error = (mid_point[0] - line_point[0])/160.0
             self.derivative = self.error - self.last_error
-            self.integral = self.integral + self.error
             self.last_error = self.error
 
-        turn = self.Kp*self.error + self.Kd*self.derivative # + self.Ki*self.integralx
+        turn = self.Kp*self.error + self.Kd*self.derivative
         forward = max(0, 1 - abs(turn*1.5))
         return forward, turn
 
@@ -124,7 +122,6 @@ def analysis(frame, neigh_clf, count):
     lineDistance = 0
     global latest_dst, latest_org
     hasLine = 0  # 0 = noLine | 1 = Line
-    degiro = 0
 
     forward = 0
     turn = 0
@@ -145,6 +142,8 @@ def analysis(frame, neigh_clf, count):
                                      cv2.CHAIN_APPROX_NONE)
 
     newcnts_l = [cnt for cnt in cnts_l if len(cnt) > 100]
+    if not newcnts_l:
+        return 0, 0, 0, 0
     newcnts_am = [cnt for cnt in cnts_am if len(cnt) > 75]
 
     analy = frame[60:, :].copy()
@@ -231,15 +230,12 @@ def analysis(frame, neigh_clf, count):
         hasLine = 1
         forward, turn = pid.getForwardTurnVelocity(line_img.copy())
         print "Estoy viendo linea recta"
-        #return forward, turn, hasLine, False # not mark = False
-        # no vale salirse ya, aun hay que clasificar simbolos y demas
 
     for pos, el in enumerate(list_conv_defs_l):
         for i in range(el.shape[0]):
-            if el.shape[0] == 1: # Giro izquierda o derecha me da igual
+            if el.shape[0] == 1:  # Giro izquierda o derecha me da igual
                 hasLine = 1
                 forward, turn = pid.getForwardTurnVelocity(line_img.copy())
-                #return forward, turn, hasLine, False
 
             elif el.shape[0] == 2 or el.shape[0] == 3:
                 print "Estoy viendo cruce 2"
@@ -254,21 +250,10 @@ def analysis(frame, neigh_clf, count):
                 mark = False
                 hasLine = 1
 
-    # 1 ... 0.6: Giro pronunciado izquierda: FLECHA IZDA
-    # 0.6 ... 0.3: Giro suave izquierda: GIRO IZDA
-    # 0.3...0.2
-    # 0.2 ... -0.2: RECTO
-    # -0.2 ... -0.3
-    # -0.3 ... -0.6
-    # -0.6 ... -1
-
-    if not newcnts_am: # marcas simbolos
+    if not newcnts_am:
         type_aut._reset()
-        # latest_dst = 0
-        # latest_org = 0
     else:
-        print type_aut.state
-        if not type_aut.getType(mark):
+        if not type_aut.getType(mark):  # Mark
             if len(newcnts_am) == 1:
                 hu_mom = cv2.HuMoments(cv2.moments(newcnts_am[0])).flatten()
                 pred = neigh_clf.predict([hu_mom])
@@ -323,148 +308,55 @@ def analysis(frame, neigh_clf, count):
                 angle360 = int(angle360)
 
                 if angle360 >= 337.5 or angle360 < 22.5:
-                    # cv2.putText(analy, "Norte (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    cv2.putText(analy, "Norte (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     return 0.5, 0, -1, 1
                     hasLine = 1
                     lineDistance = 0
-                    # print "Norte"
+                    print "Norte"
                 elif angle360 < 67.5:
-                    # cv2.putText(analy, "Noreste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    cv2.putText(analy, "Noreste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     return 0.1, -0.6, -1, 1
                     hasLine = 1
                     lineDistance = -0.25
-                    # print "Noreste"
+                    print "Noreste"
                 elif angle360 < 112.5:
-                    # cv2.putText(analy, "Este (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    cv2.putText(analy, "Este (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     return 0.1, -1, -1, 1
                     hasLine = 1
                     lineDistance = -0.5
-                    # print "Este"
+                    print "Este"
                 elif angle360 < 157.5:
-                    # cv2.putText(analy, "Sureste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    cv2.putText(analy, "Sureste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     return 0, -1, -1, 1
                     hasLine = 1
                     lineDistance = -0.8
-                    # print "Suereste"
+                    print "Sureste"
                 elif angle360 < 202.5:
-                    # cv2.putText(analy, "Sur (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    cv2.putText(analy, "Sur (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     return 0, -1, -1, 1
                     hasLine = 1
                     lineDistance = 1
-                    # print "Sur"
+                    print "Sur"
                 elif angle360 < 247.5:
-                    # cv2.putText(analy, "Suroeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    cv2.putText(analy, "Suroeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     return 0, 1, -1, 1
                     hasLine = 1
                     lineDistance = 0.8
-                    # print "Suroeste"
+                    print "Suroeste"
                 elif angle360 < 292.5:
-                    # cv2.putText(analy, "Oeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    cv2.putText(analy, "Oeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     return 0.1, 1, -1, 1
                     hasLine  = 1
                     lineDistance = 0.5
-                    # print "Oeste"
+                    print "Oeste"
                 elif angle360 < 337.5:
-                    # cv2.putText(analy, "Noroeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                    cv2.putText(analy, "Noroeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
                     return 0.1, 0.6, -1, 1
                     hasLine = 1
                     lineDistance = 0.25
-                    # print "Noroeste"
-                # cv2.line(analy, (int(peak[0]), int(peak[1])), (int(center[0]), int(center[1])), (0, 0, 255), 2)
-                # cv2.circle(analy, (int(peak[0]), int(peak[1])), 3, (0, 255, 0), -1)
+                    print "Noroeste"
 
-                ## Nuevo Anais, funciona 10/10
-                if all_mbc:
-                    # compare bottom points with the center of the image - horizontally
-                    org = all_mbc[np.argmin([abs(160 - mbc[0]) for mbc in all_mbc])]
-                    if not latest_org: latest_org = org
-                    mysqrt = np.sqrt((org[0] - latest_org[0]) ** 2 + (org[1] - latest_org[1]) ** 2)
-                    if mysqrt > 20:
-                        org = latest_org
-                    else:
-                        latest_org = org
-                else:
-                    org = latest_org
-
-                if not mark:
-                    # Sentido de centro a pico CP-> sentido flecha -> [xp-xc,yp-yc]
-                    vec_arrow = [peak[0] - center[0], peak[1] - center[1]]
-                    mod_arrow = np.sqrt(vec_arrow[0] ** 2 + vec_arrow[1] ** 2)
-
-                    # Si sabemos que es algo del Oeste o algo del Este, no mirar a Dcha o a Izqd
-                    if lineDistance < 0:  # Seguro que podemos no mirar contornos de la izquierda
-                        all_mlc = []
-                    if lineDistance > 0:  # Seguro que podemos no mirar contornos de la derecha
-                        all_mrc = []
-
-                    salidas = []
-                    salidas.extend(all_mlc)
-                    salidas.extend(all_mtc)
-                    salidas.extend(all_mrc)
-                    simil = []
-
-                    for sal in salidas:
-                        vec_sal = [sal[0] - center[0], sal[1] - center[1]]
-                        mod_sal = np.sqrt(vec_sal[0] ** 2 + vec_sal[1] ** 2)
-                        simil.append((vec_arrow[0] * vec_sal[0] + vec_arrow[1] * vec_sal[1]) / (mod_arrow * mod_sal))
-
-                    if salidas:
-                        # El punto destino sera el que mas se parezca a la flecha
-                        dst = salidas[simil.index(min(simil, key=lambda z: abs(z - 1)))]
-                        latest_dst = dst
-                    else:
-                        dst = latest_dst
-
-                else:
-                    if latest_dst:
-                        dst = latest_dst  # reconoce marca tras reconocer flecha
-                    else:
-                        # print "Entro?"
-                        # print "all_mtc: ", all_mtc
-                        # print "all_mlc: ", all_mlc
-                        # print "all_mrc: ", all_mrc
-                        # print "all_mbc: ", all_mbc
-                        if len(all_mtc) != 0:
-                            # print "primero"
-                            dst = all_mtc[0]
-                        elif len(all_mlc) != 0:
-                            # print "segundo"
-                            dst = all_mlc[0]
-                        elif len(all_mrc) != 0:
-                            # print "tercero"
-                            dst = all_mrc[0]
-                        elif len(all_mbc) > 1:
-                            # print "cuarto"
-                            dst = all_mbc[np.argmax([abs(160 - mbc[0, 0]) for mbc in all_mbc])]
-                        # print "Entro! dst: ", dst
-
-                org_dst = np.array([org, dst])  # tam 2 (1 es punto origen, 2 punto salida)
-                cv2.circle(analy, (org_dst[0, 0], org_dst[0, 1]), 3, (229, 9, 127), -1)
-                cv2.circle(analy, (org_dst[1, 0], org_dst[1, 1]), 3, (229, 9, 127), -1)
-
-                # Aqui deberias tener ya el punto origen org y destino dst mas probable tanto de flecha como de marca espontanea
-                if org[1] - dst[1] == 0: # misma y (horizontal)
-                    if org[0] < dst[0]: # 90 grados a la derecha
-                        turn = -90
-                        forward = 1
-                        hasLine = 1
-                    elif org[0] > dst[0]: # 90 grados a la izquierda
-                        turn = 90
-                        forward = 1
-                        hasLine = 1
-                    else: # No sabe que hacer, que busque linea
-                        turn = 0
-                        forward = 0
-                        hasLine = 0
-                else:
-                    turn = math.degrees(np.arctan((org[0] - dst[0]+0.0) / (org[1] - dst[1])))
-                    hasLine = 1
-                    forward = 1
-                ## Fin codigo Anais, 10/10
-                # fin if else not mark
-
-            pid._reset() # end for newcnts_am, que sabe que aqui es flecha
-        # end flecha
+            pid._reset()  # end for newcnts_am, que sabe que aqui es flecha
 
     cv2.drawContours(analy, newcnts_l, -1, (255, 0, 0), 1)
     cv2.drawContours(analy, newcnts_am, -1, (0, 0, 255), 1)

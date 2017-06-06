@@ -207,6 +207,9 @@ def segmentation(clf, frame, count, args, segm, mark=False):
         shape = frame.shape  # Segm all
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Segm all
 
+    shape = frame.shape  # Segm all
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Segm all
+
     img_norm = np.rollaxis((np.rollaxis(frame_rgb, 2)+0.1)/(np.sum(frame_rgb, 2)+0.1), 0, 3)
 
     if args.genVideo and args.genVideo == 'norm':
@@ -248,6 +251,7 @@ def analysis(clf, args, segm=False):
     else:
         capture = cv2.VideoCapture(VIDEO)
     count = 0
+    latest_org = 0
 
     if args.genVideo:
         if args.genVideo == 'segm':
@@ -294,38 +298,44 @@ def analysis(clf, args, segm=False):
             newcnts_am = [cnt for cnt in cnts_am if len(cnt) > 75]
 
             # DrawContours is destructive
-            analy = frame.copy()[90:]
+            # analy = frame.copy()[90:]
+            analy = frame.copy()
 
             # Return list of indices of points in contour
             chull_list_l = [cv2.convexHull(cont, returnPoints=False) for cont in newcnts_l]
             chull_list_am = [cv2.convexHull(cont, returnPoints=False) for cont in newcnts_am]
 
+            # print "chull_list_l: ", len(chull_list_l)
+            # for idx, ccc in enumerate(chull_list_l):
+            #     print "idx: ", idx, "ccc: ", ccc
+            #     print "size_ccc: ", len(ccc)
+
             # Return convexity defects from previous contours, each contour must have at least 3 points
             # Convexity Defect -> [start_point, end_point, farthest_point, distance_to_farthest_point]
-            conv_defs_l = [cv2.convexityDefects(cont, chull) for (cont, chull) in
-                           zip(newcnts_l, chull_list_l) if len(cont) > 3 and len(chull) > 3]
+            conv_defs_l = [(cv2.convexityDefects(cont, chull), pos) for pos, (cont, chull) in
+                           enumerate(zip(newcnts_l, chull_list_l)) if len(cont) > 3 and len(chull) > 3]
 
-            conv_defs_am = [cv2.convexityDefects(cont, chull) for (cont, chull) in
-                            zip(newcnts_am, chull_list_am) if len(cont) > 3 and len(chull) > 3]
+            conv_defs_am = [(cv2.convexityDefects(cont, chull), pos) for pos, (cont, chull) in
+                            enumerate(zip(newcnts_am, chull_list_am)) if len(cont) > 3 and len(chull) > 3]
 
             list_conv_defs_l = []
             list_cont_l = []
             list_conv_defs_am = []
             list_cont_am = []
             # Only save the convexity defects whose hole is larger than ~4 pixels (1000/256).
-            for pos, el in enumerate(conv_defs_l):
+            for el in conv_defs_l:
                 if el is not None:
-                    aux = el[:, :, 3] > 1000
+                    aux = el[0][:, :, 3] > 1000
                     if any(aux):
-                        list_conv_defs_l.append(el[aux])
-                        list_cont_l.append(newcnts_l[pos])
+                        list_conv_defs_l.append(el[0][aux])  # el = (convDefs, position)
+                        list_cont_l.append(newcnts_l[el[1]])
 
-            for pos, el in enumerate(conv_defs_am):
+            for el in conv_defs_am:
                 if el is not None:
-                    aux = el[:, :, 3] > 1000
+                    aux = el[0][:, :, 3] > 1000
                     if any(aux):
-                        list_conv_defs_am.append(el[aux])
-                        list_cont_am.append(newcnts_am[pos])
+                        list_conv_defs_am.append(el[0][aux])
+                        list_cont_am.append(newcnts_am[el[1]])
 
             mark = True
 
@@ -456,63 +466,140 @@ def analysis(clf, args, segm=False):
                                 angle360 += 180
 
                         angle360 = int(angle360)
-
+                        hasLine = 1
                         if angle360 >= 337.5 or angle360 < 22.5:
                             cv2.putText(analy, "Norte (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                            lineDistance = 0
                         elif angle360 < 67.5:
                             cv2.putText(analy, "Noreste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                            lineDistance = -0.25
                         elif angle360 < 112.5:
                             cv2.putText(analy, "Este (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                            lineDistance = -0.5
                         elif angle360 < 157.5:
                             cv2.putText(analy, "Sureste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                            lineDistance = -0.8
                         elif angle360 < 202.5:
                             cv2.putText(analy, "Sur (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                            lineDistance = 1
                         elif angle360 < 247.5:
                             cv2.putText(analy, "Suroeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                            lineDistance = 0.8
                         elif angle360 < 292.5:
                             cv2.putText(analy, "Oeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                            lineDistance = 0.5
                         elif angle360 < 337.5:
                             cv2.putText(analy, "Noroeste (ang: "+str(angle360)+")", (0, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                            lineDistance = 0.25
 
                         cv2.line(analy, (int(peak[0]), int(peak[1])), (int(center[0]), int(center[1])), (0, 0, 255), 2)
                         cv2.circle(analy, (int(peak[0]), int(peak[1])), 3, (0, 255, 0), -1)
 
-            left_border = line_img_cp[:, :10].copy()
-            right_border = line_img_cp[:, 310:].copy()
-            top_border = line_img_cp[:10, 10:310].copy()
-            bot_border = line_img_cp[140:, 10:310].copy()
+            left_border = line_img_cp[:, :20].copy()
+            right_border = line_img_cp[:, 300:].copy()
+            top_border = line_img_cp[:20, 20:300].copy()
+            bot_border = line_img_cp[220:, 20:300].copy()
+
+            all_mlc = []
+            all_mrc = []
+            all_mtc = []
+            all_mbc = []
 
             left_cnt, hier = cv2.findContours(left_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            left_cnt = [cnt for cnt in left_cnt if cv2.contourArea(cnt) > 75]
+            left_cnt = [cnt for cnt in left_cnt if cv2.contourArea(cnt) > 50]
             if left_cnt:
                 for l in left_cnt:
                     mlc = np.mean(l[:, :, :], axis=0, dtype=np.int32)
+                    all_mlc.append(mlc)
                     cv2.circle(analy, (mlc[0, 0], mlc[0, 1]), 3, (0, 255, 0), -1)
 
             right_cnt, hier = cv2.findContours(right_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            right_cnt = [cnt for cnt in right_cnt if cv2.contourArea(cnt) > 75]
+            right_cnt = [cnt for cnt in right_cnt if cv2.contourArea(cnt) > 50]
             if right_cnt:
                 for r in right_cnt:
-                    r[:, :, 0] = r[:, :, 0] + 310
+                    r[:, :, 0] = r[:, :, 0] + 300
                     mrc = np.mean(r[:, :, :], axis=0, dtype=np.int32)
+                    all_mrc.append(mrc)
                     cv2.circle(analy, (mrc[0, 0], mrc[0, 1]), 3, (0, 255, 0), -1)
 
             top_cnt, hier = cv2.findContours(top_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            top_cnt = [cnt for cnt in top_cnt if cv2.contourArea(cnt) > 75]
+            top_cnt = [cnt for cnt in top_cnt if cv2.contourArea(cnt) > 50]
             if top_cnt:
                 for t in top_cnt:
-                    t[:, :, 0] = t[:, :, 0] + 10
+                    t[:, :, 0] = t[:, :, 0] + 20
                     mtc = np.mean(t[:, :, :], axis=0, dtype=np.int32)
+                    all_mtc.append(mtc)
                     cv2.circle(analy, (mtc[0, 0], mtc[0, 1]), 3, (0, 255, 0), -1)
 
             bot_cnt, hier = cv2.findContours(bot_border, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-            bot_cnt = [cnt for cnt in bot_cnt if cv2.contourArea(cnt) > 75]
+            bot_cnt = [cnt for cnt in bot_cnt if cv2.contourArea(cnt) > 50]
             if bot_cnt:
                 for b in bot_cnt:
-                    b[:, :, 0] = b[:, :, 0] + 10
-                    b[:, :, 1] = b[:, :, 1] + 140
+                    b[:, :, 0] = b[:, :, 0] + 20
+                    b[:, :, 1] = b[:, :, 1] + 220
                     mbc = np.mean(b[:, :, :], axis=0, dtype=np.int32)
+                    all_mbc.append(mbc)
                     cv2.circle(analy, (mbc[0, 0], mbc[0, 1]), 3, (255, 0, 255), -1)
+
+                # # n_puntos = len(all_mtc) + len(all_mlc) + len(all_mrc) + len(all_mbc)
+                # # mark = True
+                # # if n_puntos == 2:
+                # #     if len(all_mlc):
+                # #         print "Curva a izquierda"
+                # #     elif len(all_mrc):
+                # #         print "Curva a derecha"
+                # #     else:
+                # #         print "Recta"
+                # # elif n_puntos == 3:
+                # #     print "Cruce 2 salidas"
+                # #     mark = False
+                # # elif n_puntos == 4:
+                # #     print "Cruce 3 salidas"
+                # #     mark = False
+                # # else:
+                # #     print "No tengo ni idea de que es, n_puntos: ", n_puntos, \
+                # #         " top: ", len(all_mtc), " left: ", len(all_mlc), " right: ", len(all_mrc), " bot: ", len(all_mbc)
+
+                # if all_mbc:
+                #     org = all_mbc[np.argmin([abs(160 - mbc[0, 0]) for mbc in all_mbc])]  # compare bottom points with the center of the image - horizontally
+                #     latest_org = org
+                # else:
+                #     org = latest_org
+
+                # if not mark:
+                #     if all_mtc and (lineDistance == 0 or lineDistance == -0.25 or lineDistance == 0.25):  # norte
+                #         dst = all_mtc[np.argmin([mtc[0, 1] for mtc in all_mtc])]
+                #     elif all_mrc and (lineDistance == -0.5 or lineDistance == -0.8):  # este
+                #         dst = all_mrc[np.argmin([mrc[0, 1] for mrc in all_mrc])]
+
+                #     elif all_mlc and (lineDistance == 0.5 or lineDistance == 0.8):  # oeste
+                #         dst = all_mlc[np.argmin([mlc[0, 1] for mlc in all_mlc])]
+                #     else:
+                #         dst = np.array([[160, 120]])
+                # else:
+                #     # print "Entro?"
+                #     # print "all_mtc: ", all_mtc
+                #     # print "all_mlc: ", all_mlc
+                #     # print "all_mrc: ", all_mrc
+                #     # print "all_mbc: ", all_mbc
+                #     if len(all_mtc) != 0:
+                #         # print "primero"
+                #         dst = all_mtc[0]
+                #     elif len(all_mlc) != 0:
+                #         # print "segundo"
+                #         dst = all_mlc[0]
+                #     elif len(all_mrc) != 0:
+                #         # print "tercero"
+                #         dst = all_mrc[0]
+                #     elif len(all_mbc) > 1:
+                #         # print "cuarto"
+                #         dst = all_mbc[np.argmax([abs(160 - mbc[0, 0]) for mbc in all_mbc])]
+                #     # print "Entro! dst: ", dst
+
+                # org_dst = np.array([org[0], dst[0]])  # tam 2 (1 es punto origen, 2 punto salida)
+                # # print "org_dst: ", org_dst
+                # cv2.circle(analy, (org_dst[0, 0], org_dst[0, 1]), 3, (229, 9, 127), -1)
+                # cv2.circle(analy, (org_dst[1, 0], org_dst[1, 1]), 3, (229, 9, 127), -1)
 
             if args.genVideo and args.genVideo == 'chull':
                 cv2.drawContours(analy, left_cnt, -1, (255, 0, 0), 2)
@@ -524,11 +611,11 @@ def analysis(clf, args, segm=False):
             cv2.drawContours(analy, newcnts_am, -1, (0, 0, 255), 1)
             cv2.imshow("Contours", analy)
 
-            if args.genVideo:
-                if args.genVideo == 'analy':
-                    cv2.imwrite(join(ANALY_DIR, 'AnalyImg'+str(count)+'.png'), analy)
-                elif args.genVideo == 'chull':
-                    cv2.imwrite(join(CHULL_DIR, 'ChullImg'+str(count)+'.png'), analy)
+            # if args.genVideo:
+            #     if args.genVideo == 'analy':
+            #         cv2.imwrite(join(ANALY_DIR, 'AnalyImg'+str(count)+'.png'), analy)
+            #     elif args.genVideo == 'chull':
+            #         cv2.imwrite(join(CHULL_DIR, 'ChullImg'+str(count)+'.png'), analy)
 
             # compare key pressed with the ascii code of the character
             key = cv2.waitKey(10)
@@ -556,105 +643,119 @@ def analysis(clf, args, segm=False):
     cv2.destroyAllWindows()
 
 
+# def mark_train(args):
+#     global plx, ply, pca, neigh_clf
+
+#     clf = training(mark=True, train_img_m='9999')
+
+#     all_hu = []
+#     labels = []
+#     for idx, m in enumerate(MARKS):
+#         files = [join(MARK_DIR, m, 'chosen', f)
+#                  for f in listdir(join(MARK_DIR, m, 'chosen'))]
+#         h = []
+#         l = []
+#         for i in files:
+#             frame = imread(i)
+#             frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+#             _, arrow_mark_img = segmentation(clf, frame_bgr, 0, args, segm=False, mark=True)
+#             cnts, hier = cv2.findContours(arrow_mark_img, cv2.RETR_LIST,
+#                                           cv2.CHAIN_APPROX_NONE)
+#             cnts = [cnt for cnt in cnts if cv2.contourArea(cnt) > 75]
+#             hu_mom = cv2.HuMoments(cv2.moments(cnts[0])).flatten()
+#             h.append(hu_mom)
+#             l.append(idx)
+#         all_hu.append(h)
+#         labels.append(l)
+
+#     all_hu = np.array(all_hu)
+#     # with open('dataset.rob', 'wb') as f:
+#     #     np.savetxt(f, all_hu.reshape(400, 7))
+#     labels = np.array(labels)
+
+#     q_n = 1
+#     cov_list = np.cov(all_hu.reshape(400, 7).T)
+#     neigh = KNeighborsClassifier(n_neighbors=q_n, weights='distance',
+#                                  metric='mahalanobis', metric_params={'V': cov_list})
+
+#     loo = LeaveOneOut(100)
+#     s = 4*99
+#     fallo_cruz = 0
+#     fallo_escalera = 0
+#     fallo_persona = 0
+#     fallo_telefono = 0
+#     for train_idx, test_idx in loo:
+#         neigh.fit(all_hu[:, train_idx].reshape((s, 7)), labels[:, train_idx].reshape((s,)))
+#         res = neigh.predict(all_hu[:, test_idx].reshape(4, 7))
+#         if res[0] != 0:
+#             fallo_cruz += 1
+#         if res[1] != 1:
+#             fallo_escalera += 1
+#         if res[2] != 2:
+#             fallo_persona += 1
+#         if res[3] != 3:
+#             fallo_telefono += 1
+
+#     print "q-NN: ", q_n
+#     print "Acierto Cruz     (%): ", 100-fallo_cruz
+#     print "Acierto Escalera (%): ", 100-fallo_escalera
+#     print "Acierto Persona  (%): ", 100-fallo_persona
+#     print "Acierto Telefono (%): ", 100-fallo_telefono
+
+#     # s = 4*100
+#     # fallo_cruz = 0
+#     # fallo_escalera = 0
+#     # fallo_persona = 0
+#     # fallo_telefono = 0
+
+#     # pca = PCA(n_components=2)
+#     # tr_data = pca.fit_transform(all_hu.reshape((s, 7)))
+#     # tr_label = labels.reshape((s,))
+#     # plx = [[], [], [], []]
+#     # ply = [[], [], [], []]
+#     # for idx, el in enumerate(tr_data):
+#     #     ps = tr_label[idx]
+#     #     plx[ps].append(el[0])
+#     #     ply[ps].append(el[1])
+#     # for pos, p in enumerate(plx):
+#     #     plt.scatter(p, ply[pos], label=MARKS[pos], color=COLORS[pos])
+#     # plt.legend()
+#     # plt.show()
+#     # sys.exit()
+
+#     # neigh.fit(all_hu.reshape((s, 7)), labels.reshape((s,)))
+#     # for idx in range(100):
+#     #     res = neigh.predict(all_hu[:, idx].reshape(4, 7))
+#     #     if res[0] != 0:
+#     #         fallo_cruz += 1
+#     #     if res[1] != 1:
+#     #         fallo_escalera += 1
+#     #     if res[2] != 2:
+#     #         fallo_persona += 1
+#     #     if res[3] != 3:
+#     #         fallo_telefono += 1
+
+#     # print "K-neighbors: ", k_n
+#     # print "% Acierto Cruz: ", 100-fallo_cruz
+#     # print "% Acierto Escalera: ", 100-fallo_escalera
+#     # print "% Acierto Persona: ", 100-fallo_persona
+#     # print "% Acierto Telefono: ", 100-fallo_telefono
+
+#     neigh_clf = neigh
 def mark_train(args):
-    global plx, ply, pca, neigh_clf
-
-    clf = training(mark=True, train_img_m='9999')
-
-    all_hu = []
-    labels = []
-    for idx, m in enumerate(MARKS):
-        files = [join(MARK_DIR, m, 'chosen', f)
-                 for f in listdir(join(MARK_DIR, m, 'chosen'))]
-        h = []
-        l = []
-        for i in files:
-            frame = imread(i)
-            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            _, arrow_mark_img = segmentation(clf, frame_bgr, 0, args, segm=False, mark=True)
-            cnts, hier = cv2.findContours(arrow_mark_img, cv2.RETR_LIST,
-                                          cv2.CHAIN_APPROX_NONE)
-            cnts = [cnt for cnt in cnts if cv2.contourArea(cnt) > 75]
-            hu_mom = cv2.HuMoments(cv2.moments(cnts[0])).flatten()
-            h.append(hu_mom)
-            l.append(idx)
-        all_hu.append(h)
-        labels.append(l)
-
-    all_hu = np.array(all_hu)
-    # with open('dataset.rob', 'wb') as f:
-    #     np.savetxt(f, all_hu.reshape(400, 7))
-    labels = np.array(labels)
+    all_hu = np.load('moments.hu')
+    labels = np.load('moments.labels')
 
     q_n = 1
     cov_list = np.cov(all_hu.reshape(400, 7).T)
     neigh = KNeighborsClassifier(n_neighbors=q_n, weights='distance',
                                  metric='mahalanobis', metric_params={'V': cov_list})
 
-    loo = LeaveOneOut(100)
-    s = 4*99
-    fallo_cruz = 0
-    fallo_escalera = 0
-    fallo_persona = 0
-    fallo_telefono = 0
-    for train_idx, test_idx in loo:
-        neigh.fit(all_hu[:, train_idx].reshape((s, 7)), labels[:, train_idx].reshape((s,)))
-        res = neigh.predict(all_hu[:, test_idx].reshape(4, 7))
-        if res[0] != 0:
-            fallo_cruz += 1
-        if res[1] != 1:
-            fallo_escalera += 1
-        if res[2] != 2:
-            fallo_persona += 1
-        if res[3] != 3:
-            fallo_telefono += 1
-
-    print "q-NN: ", q_n
-    print "Acierto Cruz     (%): ", 100-fallo_cruz
-    print "Acierto Escalera (%): ", 100-fallo_escalera
-    print "Acierto Persona  (%): ", 100-fallo_persona
-    print "Acierto Telefono (%): ", 100-fallo_telefono
-
-    # s = 4*100
-    # fallo_cruz = 0
-    # fallo_escalera = 0
-    # fallo_persona = 0
-    # fallo_telefono = 0
-
-    # pca = PCA(n_components=2)
-    # tr_data = pca.fit_transform(all_hu.reshape((s, 7)))
-    # tr_label = labels.reshape((s,))
-    # plx = [[], [], [], []]
-    # ply = [[], [], [], []]
-    # for idx, el in enumerate(tr_data):
-    #     ps = tr_label[idx]
-    #     plx[ps].append(el[0])
-    #     ply[ps].append(el[1])
-    # for pos, p in enumerate(plx):
-    #     plt.scatter(p, ply[pos], label=MARKS[pos], color=COLORS[pos])
-    # plt.legend()
-    # plt.show()
-    # sys.exit()
-
-    # neigh.fit(all_hu.reshape((s, 7)), labels.reshape((s,)))
-    # for idx in range(100):
-    #     res = neigh.predict(all_hu[:, idx].reshape(4, 7))
-    #     if res[0] != 0:
-    #         fallo_cruz += 1
-    #     if res[1] != 1:
-    #         fallo_escalera += 1
-    #     if res[2] != 2:
-    #         fallo_persona += 1
-    #     if res[3] != 3:
-    #         fallo_telefono += 1
-
-    # print "K-neighbors: ", k_n
-    # print "% Acierto Cruz: ", 100-fallo_cruz
-    # print "% Acierto Escalera: ", 100-fallo_escalera
-    # print "% Acierto Persona: ", 100-fallo_persona
-    # print "% Acierto Telefono: ", 100-fallo_telefono
-
+    n_images = 4*100
+    neigh.fit(all_hu.reshape((n_images, 7)), labels.reshape((n_images,)))
+    global neigh_clf
     neigh_clf = neigh
+    return neigh
 
 
 def gen_video(name, procedure):

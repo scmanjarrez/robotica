@@ -8,16 +8,6 @@ ws = None
 
 
 class BrainTestNavigator(Brain):
-    # NO_FORWARD = 0
-    # SLOW_FORWARD = 0.1
-    # MED_FORWARD = 0.2
-    # FULL_FORWARD = 0.3
-
-    # NO_FORWARD = 0.2
-    # SLOW_FORWARD = 0.45
-    # MED_FORWARD = 0.5
-    # FULL_FORWARD = 0.6
-
     NO_FORWARD = 0.05
     SLOW_FORWARD = 0.3
     MED_FORWARD = 0.4
@@ -33,7 +23,6 @@ class BrainTestNavigator(Brain):
     MED_RIGHT1 = -0.2
     HARD_RIGHT = -0.4
 
-
     NO_ERROR = 0
 
     NOLINE = False
@@ -42,7 +31,7 @@ class BrainTestNavigator(Brain):
     count_r = 0
     count_e = 0
     speed_t = 1
-    speed_f = 1
+    speed_f = 0.5
     MAX = 28
 
     cc = 0
@@ -54,47 +43,24 @@ class BrainTestNavigator(Brain):
         pass
 
     def step(self):
-        # if(capture.isOpened()):
-            # if self.cc < 6:
-            #     ret, frame = capture.read()
-            #     self.cc += 1
-            #     return
-            # ret, frame = capture.read()
-            # if ret:     # and self.cc % 24:
         frame = ws.read()
         forward, turn, hasLine, arrow = err.analysis(frame, neigh_clf, self.cc)
 
         if hasLine == 1:
+            self.count_elipse = 0
+            self.count_l = 0
+            self.count_r = 0
+            self.count_e = 0
             if not arrow:
                 self.move(forward*0.5, turn*0.5)
-            if arrow: # Girar con rangos
-                degiro = turn/90  # degiro va desde -90 a 90
-                if 1 >= degiro > 0.6:
-                    self.move(self.NO_FORWARD, self.HARD_LEFT)
-                    print "Giro fuerte izda", degiro
-                elif 0.6 >= degiro > 0.3:
-                    self.move(self.SLOW_FORWARD, self.MED_LEFT1)
-                    print "Giro a medias izda", degiro
-                elif 0.3 >= degiro > 0.2:
-                    self.move(self.MED_FORWARD, self.MED_LEFT2)
-                    print "Giro poco izda", degiro
-                elif 0.2 >= degiro > -0.2:
-                    self.move(self.FULL_FORWARD, self.NO_TURN)
-                    print "Solo avanti", degiro
-                elif -0.2 >= degiro > -0.3:
-                    self.move(self.MED_FORWARD, self.MED_RIGHT2)
-                    print "Giro poco derecha", degiro
-                elif -0.3 >= degiro > -0.6:
-                    self.move(self.SLOW_FORWARD, self.MED_RIGHT1)
-                    print "Giro a medias dcha", degiro
-                elif -0.6 >= degiro >= -1:
-                    self.move(self.NO_FORWARD, self.HARD_RIGHT)
-                    print "Giro fuerte dcha", degiro
 
-        elif hasLine == -1:
+        elif hasLine == -1:  # Arrow
+            self.count_elipse = 0
+            self.count_l = 0
+            self.count_r = 0
+            self.count_e = 0
             self.move(forward, turn)
         else:  # noline
-            # print "No te vayas linea :("
             if self.count_l < 14:
                 self.move(0, 0.5)
                 self.count_l += 1
